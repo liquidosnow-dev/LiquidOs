@@ -1,0 +1,468 @@
+{
+  "models": [
+    {
+      "name": "Gemma-4-E2B-it",
+      "modelId": "litert-community/gemma-4-E2B-it-litert-lm",
+      "modelFile": "gemma-4-E2B-it.litertlm",
+      "description": "A variant of Gemma 4 E2B ready for deployment on iOS using [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM/blob/main/README.md). It supports text input, with up to 32K context length.",
+      "sizeInBytes": 2588147712,
+      "commitHash": "6e5c4f1e395deb959c494953478fa5cec4b8008f",
+      "minDeviceMemoryInGb": 6,
+      "version": 2,
+      "supportedVersions": [
+        {
+          "version": 0,
+          "modelFile": "gemma4_2b_v09_obfus_fix_all_modalities_thinking.litertlm"
+        },
+        {
+          "version": 1,
+          "modelFile": "gemma-4-E2B-it.litertlm"
+        },
+        {
+          "version": 2,
+          "modelFile": "gemma-4-E2B-it.litertlm"
+        }
+      ],
+      "llmSupportImage": true,
+      "llmSupportAudio": true,
+      "updateInfo": "The updated model now leverages Gemma 4's built-in Multi Token Prediction (MTP) for faster decode on select workloads. You can enable or disable MTP using a new toggle in chat configuration.",
+      "capabilities": [
+        "llm_thinking",
+        "speculative_decoding"
+      ],
+      "defaultConfig": {
+        "topK": 64,
+        "topP": 0.95,
+        "temperature": 1.0,
+        "maxTokens": 4000,
+        "maxContextLength": 32000,
+        "accelerators": "gpu,cpu"
+      },
+      "taskTypes": [
+        "llm_chat",
+        "llm_prompt_lab",
+        "llm_agent_chat",
+        "llm_ask_image",
+        "llm_ask_audio",
+        "llm_ar_language_teacher"
+      ],
+      "bestForTaskTypes": [
+        "llm_chat",
+        "llm_prompt_lab",
+        "llm_agent_chat",
+        "llm_ask_image",
+        "llm_ask_audio"
+      ],
+      "capabilityToTaskTypes": {
+        "llm_thinking": [
+          "llm_chat",
+          "llm_ask_image",
+          "llm_ask_audio"
+        ],
+        "speculative_decoding": [
+          "llm_chat",
+          "llm_ask_audio",
+          "llm_prompt_lab"
+        ]
+      }
+    },
+    {
+      "name": "Gemma-4-E4B-it",
+      "modelId": "litert-community/gemma-4-E4B-it-litert-lm",
+      "modelFile": "gemma-4-E4B-it.litertlm",
+      "description": "A variant of Gemma 4 E4B ready for deployment on iOS using [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM/blob/main/README.md). It supports text input, with up to 32K context length.",
+      "sizeInBytes": 3659530240,
+      "commitHash": "28299f30ee4d43294517a4ac93abd6163412f07f",
+      "minDeviceMemoryInGb": 8,
+      "version": 2,
+      "supportedVersions": [
+        {
+          "version": 0,
+          "modelFile": "gemma4_4b_v09_obfus_fix_all_modalities_thinking.litertlm"
+        },
+        {
+          "version": 1,
+          "modelFile": "gemma-4-E4B-it.litertlm"
+        },
+        {
+          "version": 2,
+          "modelFile": "gemma-4-E4B-it.litertlm"
+        }
+      ],
+      "llmSupportImage": true,
+      "llmSupportAudio": true,
+      "updateInfo": "The updated model now leverages Gemma 4's built-in Multi Token Prediction (MTP) for faster decode on select workloads. You can enable or disable MTP using a new toggle in chat configuration.",
+      "capabilities": [
+        "llm_thinking",
+        "speculative_decoding"
+      ],
+      "defaultConfig": {
+        "topK": 64,
+        "topP": 0.95,
+        "temperature": 1.0,
+        "maxTokens": 4000,
+        "maxContextLength": 32000,
+        "accelerators": "gpu,cpu"
+      },
+      "taskTypes": [
+        "llm_chat",
+        "llm_prompt_lab",
+        "llm_agent_chat",
+        "llm_ask_image",
+        "llm_ask_audio",
+        "llm_ar_language_teacher"
+      ],
+      "bestForTaskTypes": [
+        "llm_ar_language_teacher"
+      ],
+      "capabilityToTaskTypes": {
+        "llm_thinking": [
+          "llm_chat",
+          "llm_ask_image",
+          "llm_ask_audio"
+        ],
+        "speculative_decoding": [
+          "llm_chat",
+          "llm_ask_audio",
+          "llm_prompt_lab"
+        ]
+      }
+    },
+    {
+      "name": "EmbeddingGemma-2",
+      "modelId": "litert-community/embeddinggemma-2-740m-litert-lm",
+      "modelFile": "embeddinggemma-2-740m.litertlm",
+      "description": "A variant of EmbeddingGemma 2 ready for deployment on iOS using MediaPipe [SemanticRetriever](https://developers.google.com/edge/mediapipe/solutions/retrieval/semantic_retriever). It is a multimodal embedding model with image, audio, video, and text understanding.",
+      "sizeInBytes": 484622336,
+      "commitHash": "86b903a293f96d042bb92e1b7af333d94114458f",
+      "minDeviceMemoryInGb": 4,
+      "version": 1,
+      "defaultConfig": {
+        "topK": 0,
+        "topP": 0.0,
+        "temperature": 0.0,
+        "maxTokens": 0,
+        "accelerators": "gpu,cpu"
+      },
+      "taskTypes": [
+        "smart_album",
+        "video_moment_finder"
+      ],
+      "bestForTaskTypes": [
+        "smart_album",
+        "video_moment_finder"
+      ],
+      "extraDataFiles": [
+        {
+          "name": "sample images",
+          "url": "https://dl.google.com/google-ai-edge-gallery/android/smart_album/20260911/samples.zip",
+          "downloadFileName": "samples.zip",
+          "sizeInBytes": 15261357,
+          "targetTaskTypes": [
+            "smart_album"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Gemma-3n-E2B-it",
+      "modelId": "google/gemma-3n-E2B-it-litert-lm",
+      "modelFile": "gemma-3n-E2B-HW.litertlm",
+      "description": "A variant of [Gemma 3n E2B](https://ai.google.dev/gemma/docs/gemma-3n) on iOS. The current checkpoint supports text, vision, and audio input, with 4096 context length.",
+      "sizeInBytes": 3037282304,
+      "minDeviceMemoryInGb": 6,
+      "version": 0,
+      "llmSupportImage": true,
+      "llmSupportAudio": true,
+      "downloadUrl": "https://dl.google.com/google-ai-edge-gallery/ios/gemma3n/v0/gemma-3n-E2B-HW.litertlm",
+      "defaultConfig": {
+        "topK": 64,
+        "topP": 0.95,
+        "temperature": 1.0,
+        "maxTokens": 4096,
+        "accelerators": "gpu"
+      },
+      "taskTypes": [
+        "llm_chat",
+        "llm_prompt_lab",
+        "llm_ask_image",
+        "llm_ask_audio"
+      ]
+    },
+    {
+      "name": "Gemma-3n-E4B-it",
+      "modelId": "google/gemma-3n-E4B-it-litert-lm",
+      "modelFile": "gemma-3n-E4B-HW.litertlm",
+      "description": "A variant of [Gemma 3n E4B](https://ai.google.dev/gemma/docs/gemma-3n) on iOS. The current checkpoint supports text, vision, and audio input, with 4096 context length.",
+      "sizeInBytes": 4274143232,
+      "minDeviceMemoryInGb": 8,
+      "version": 0,
+      "llmSupportImage": true,
+      "llmSupportAudio": true,
+      "downloadUrl": "https://dl.google.com/google-ai-edge-gallery/ios/gemma3n/v0/gemma-3n-E4B-HW.litertlm",
+      "defaultConfig": {
+        "topK": 64,
+        "topP": 0.95,
+        "temperature": 1.0,
+        "maxTokens": 4096,
+        "accelerators": "gpu"
+      },
+      "taskTypes": [
+        "llm_chat",
+        "llm_prompt_lab",
+        "llm_ask_image",
+        "llm_ask_audio"
+      ]
+    },
+    {
+      "name": "Gemma3-1B-IT",
+      "modelId": "litert-community/Gemma3-1B-IT",
+      "modelFile": "gemma3-1b-it-int4.litertlm",
+      "description": "A variant of [google/Gemma-3-1B-IT](https://huggingface.co/google/Gemma-3-1B-IT) with 4-bit quantization ready for deployment on iOS",
+      "sizeInBytes": 584417280,
+      "minDeviceMemoryInGb": 4,
+      "version": 0,
+      "llmSupportImage": false,
+      "llmSupportAudio": false,
+      "downloadUrl": "https://dl.google.com/google-ai-edge-gallery/ios/gemma3-1b-it/v0/gemma3-1b-it-int4.litertlm",
+      "defaultConfig": {
+        "topK": 64,
+        "topP": 0.95,
+        "temperature": 1.0,
+        "maxTokens": 4096,
+        "accelerators": "cpu, gpu"
+      },
+      "taskTypes": [
+        "llm_chat",
+        "llm_prompt_lab"
+      ]
+    },
+    {
+      "name": "TinyGarden-270M",
+      "modelId": "litert-community/functiongemma-270m-ft-tiny-garden",
+      "modelFile": "tiny_garden.litertlm",
+      "description": "Fine-tuned Function Gemma 270M model for Tiny Garden.",
+      "sizeInBytes": 288964608,
+      "minDeviceMemoryInGb": 4,
+      "version": 1,
+      "downloadUrl": "https://dl.google.com/google-ai-edge-gallery/ios/tiny-garden/v1/tiny_garden.litertlm",
+      "defaultConfig": {
+        "topK": 64,
+        "topP": 0.95,
+        "temperature": 0.0,
+        "maxTokens": 1024,
+        "accelerators": "cpu"
+      },
+      "taskTypes": [
+        "llm_tiny_garden"
+      ],
+      "bestForTaskTypes": [
+        "llm_tiny_garden"
+      ]
+    },
+    {
+      "name": "MobileActions-270M",
+      "modelId": "litert-community/functiongemma-270m-ft-mobile-actions",
+      "modelFile": "mobile_actions.litertlm",
+      "description": "Fine-tuned Function Gemma 270M model for Mobile Actions.",
+      "downloadUrl": "https://dl.google.com/google-ai-edge-gallery/ios/mobile-actions/v0/mobile_actions.litertlm",
+      "sizeInBytes": 288964608,
+      "minDeviceMemoryInGb": 4,
+      "version": 0,
+      "defaultConfig": {
+        "topK": 64,
+        "topP": 0.95,
+        "temperature": 0.0,
+        "maxTokens": 1024,
+        "accelerators": "cpu"
+      },
+      "taskTypes": [
+        "llm_mobile_actions"
+      ],
+      "bestForTaskTypes": [
+        "llm_mobile_actions"
+      ]
+    },
+    {
+      "name": "Parakeet TDT 0.6B ASR",
+      "modelId": "litert-community/parakeet-tdt-0.6b-v3",
+      "modelFile": "parakeet_tdt_0.6b_v3_5s_i8_stateful.litertlm",
+      "description": "Open-weight NVIDIA Parakeet TDT 0.6B v3 on-device ASR model.",
+      "sizeInBytes": 614588752,
+      "minDeviceMemoryInGb": 4,
+      "commitHash": "3ce205aa928f443f423214195cfe83ebe4802826",
+      "version": 1,
+      "modelType": "asr",
+      "asrConfig": {
+        "languages": [
+          "bg-BG",
+          "hr-HR",
+          "cs-CZ",
+          "da-DK",
+          "nl-NL",
+          "en-US",
+          "et-EE",
+          "fi-FI",
+          "fr-FR",
+          "de-DE",
+          "el-GR",
+          "hu-HU",
+          "it-IT",
+          "lv-LV",
+          "lt-LT",
+          "mt-MT",
+          "pl-PL",
+          "pt-PT",
+          "ro-RO",
+          "ru-RU",
+          "sk-SK",
+          "sl-SI",
+          "es-ES",
+          "sv-SE",
+          "uk-UA"
+        ]
+      },
+      "defaultConfig": {
+        "topK": 0,
+        "topP": 0.0,
+        "temperature": 0.0,
+        "maxTokens": 0,
+        "accelerators": "gpu,cpu"
+      },
+      "taskTypes": [],
+      "learnMoreUrl": "https://developers.google.com/edge/mediapipe/solutions/audio/audio_transcriber"
+    },
+    {
+      "name": "Kokoro 82M (TTS)",
+      "modelId": "litert-community/Kokoro-82M",
+      "modelFile": "kokoro_int8_gpu_fp16.litertlm",
+      "description": "Multilingual on-device text-to-speech model supporting English, Spanish, French, Italian, Portuguese, Hindi, Mandarin Chinese, and Japanese.",
+      "sizeInBytes": 294750530,
+      "minDeviceMemoryInGb": 4,
+      "commitHash": "81e43a025bccabcbbd487f08bc3ebd65b5fc7295",
+      "version": 3,
+      "supportedVersions": [
+        {
+          "version": 0,
+          "modelFile": "kokoro_acoustic_int8_zh_jp.litertlm"
+        },
+        {
+          "version": 1,
+          "modelFile": "kokoro_int8.litertlm"
+        },
+        {
+          "version": 2,
+          "modelFile": "kokoro_int8.litertlm"
+        },
+        {
+          "version": 3,
+          "modelFile": "kokoro_int8_gpu_fp16.litertlm"
+        }
+      ],
+      "modelType": "tts",
+      "ttsConfig": {
+        "engineModelId": "mediapipe_kokoro_82m",
+        "languages": [
+          "en-US",
+          "en-GB",
+          "es-ES",
+          "fr-FR",
+          "hi-IN",
+          "it-IT",
+          "pt-BR",
+          "ja-JP",
+          "zh-CN"
+        ]
+      },
+      "defaultConfig": {
+        "topK": 0,
+        "topP": 0.0,
+        "temperature": 0.0,
+        "maxTokens": 0,
+        "accelerators": "gpu,cpu"
+      },
+      "taskTypes": [],
+      "learnMoreUrl": "https://developers.google.com/edge/mediapipe/solutions/audio/text_to_speech"
+    },
+    {
+      "name": "PocketTTS 100M (TTS)",
+      "modelId": "litert-community/pocket-tts",
+      "modelFile": "pocket_tts_int8.litertlm",
+      "description": "A compact 100M multilingual text-to-speech model supporting 7 languages and 14 built-in voices.",
+      "sizeInBytes": 760061960,
+      "minDeviceMemoryInGb": 4,
+      "commitHash": "bca93d6756489f9403f94d66826cfa65f80023a1",
+      "version": 1,
+      "modelType": "tts",
+      "ttsConfig": {
+        "engineModelId": "mediapipe_pocket_tts_100m",
+        "defaultVoice": "alba",
+        "languages": [
+          "en-US",
+          "fr-FR",
+          "de-DE",
+          "es-ES",
+          "it-IT",
+          "pt-BR",
+          "nl-NL"
+        ]
+      },
+      "defaultConfig": {
+        "topK": 0,
+        "topP": 0.0,
+        "temperature": 0.0,
+        "maxTokens": 0,
+        "accelerators": "cpu"
+      },
+      "taskTypes": [],
+      "learnMoreUrl": "https://developers.google.com/edge/mediapipe/solutions/audio/text_to_speech"
+    },
+    {
+      "name": "Phonon 31M (TTS)",
+      "modelId": "litert-community/phonon-31m-en",
+      "modelFile": "phonon_int8.litertlm",
+      "description": "An ultra-compact 31M English text-to-speech model supporting 5 built-in voices.",
+      "sizeInBytes": 87205888,
+      "minDeviceMemoryInGb": 4,
+      "commitHash": "5831f6fe488a37eae179c2a22bb297f9bc175a5c",
+      "version": 1,
+      "modelType": "tts",
+      "ttsConfig": {
+        "engineModelId": "mediapipe_phonon_31m",
+        "defaultVoice": "freya",
+        "languages": [
+          "en-US"
+        ]
+      },
+      "defaultConfig": {
+        "topK": 0,
+        "topP": 0.0,
+        "temperature": 0.0,
+        "maxTokens": 0,
+        "accelerators": "cpu"
+      },
+      "taskTypes": [],
+      "learnMoreUrl": "https://developers.google.com/edge/mediapipe/solutions/audio/text_to_speech"
+    },
+    {
+      "name": "Magic touch",
+      "modelId": "google-ai-edge-gallery/interactive-segmentation",
+      "modelFile": "interactive_segmentation.task",
+      "downloadUrl": "https://dl.google.com/google-ai-edge-gallery/android/interactive-segmentation/20260810/interactive_segmentation.task",
+      "description": "Interactive image segmentation model used to cut out vocabulary object stickers in XR Language Teacher.",
+      "sizeInBytes": 30525312,
+      "minDeviceMemoryInGb": 4,
+      "version": 0,
+      "modelType": "segmentation",
+      "defaultConfig": {
+        "topK": 0,
+        "topP": 0.0,
+        "temperature": 0.0,
+        "maxTokens": 0,
+        "accelerators": "cpu"
+      },
+      "taskTypes": [],
+      "learnMoreUrl": "https://ai.google.dev/edge/mediapipe/solutions/vision/interactive_segmenter"
+    }
+  ]
+}

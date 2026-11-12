@@ -1,0 +1,6 @@
+{
+  "name": "Codex & LiquidOS - AI App Builder & Wish Granter",
+  "description": "Generate full-stack web applications from natural language with live sandbox execution, Codex tool-calling engine, multi-model support, version control, and one-click deployment.",
+  "requestFramePermissions": ["geolocation", "microphone", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
