@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.liquidos.one",
+      "sha256_cert_fingerprints": [
+        "A4:3F:8B:21:9C:0D:4E:77:51:22:B8:E3:19:40:6A:C1:88:3E:5D:02:9F:14:7B:6C:2A:D4:09:E1:33:58:72:FA"
+      ]
+    }
+  }
+]

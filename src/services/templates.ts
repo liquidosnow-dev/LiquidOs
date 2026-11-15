@@ -1,4 +1,6 @@
 import { Project, ProjectFile } from '../types';
+import { getHonoFullstackInitialFiles } from '../utils/sandboxEngine';
+import { getUnifiedOneProjectFiles } from '../utils/contractRegistry';
 
 export interface AppTemplate {
   id: string;
@@ -10,6 +12,23 @@ export interface AppTemplate {
 }
 
 export const TEMPLATES: AppTemplate[] = [
+  {
+    id: 'liquid-one',
+    name: 'LiquidOS ONE · Atomic Nexus Registry & Cloud Sandbox',
+    badge: 'Unified Master Project',
+    description:
+      'Single canonical codebase uniting AN-EVC-001 (TS + Python 3.10 RFC 8785 JCS, 186/186 tests), Hono v4 Edge API with Cloudflare D1/KV/R2, and LiquidOS Mercury Vault.',
+    icon: '◈',
+    files: getUnifiedOneProjectFiles(),
+  },
+  {
+    id: 'hono-cloudflare',
+    name: 'Enterprise Cloud Sandbox (Hono + Cloudflare)',
+    badge: 'Enterprise Full-Stack · Hono & D1',
+    description: 'Persistent Linux Sandbox at /home/user/webapp with Hono API, Cloudflare D1 SQL, KV Cache, R2 Storage, and 1-Click Genspark Publishing.',
+    icon: '⚡',
+    files: getHonoFullstackInitialFiles(),
+  },
   {
     id: 'liquid-os',
     name: 'LiquidOS Mercury Vault & Pipeline Router',

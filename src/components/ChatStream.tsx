@@ -1,9 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, ToolCall } from '../types';
+import { ChatMessage, ToolCall, ProjectFile } from '../types';
 import { ToolCallCard } from './ToolCallCard';
 import { CodeBlock } from './CodeBlock';
 import { extractFilesFromResponse } from '../utils/toolExecutor';
-import { Send, Mic, Image as ImageIcon, Sparkles, Plus, Check, Play, Loader2, ArrowUp, Zap } from 'lucide-react';
+import {
+  Send,
+  Mic,
+  Image as ImageIcon,
+  Sparkles,
+  Plus,
+  Check,
+  Play,
+  Loader2,
+  ArrowUp,
+  Zap,
+  AtSign,
+  FileCode,
+} from 'lucide-react';
 
 interface ChatStreamProps {
   messages: ChatMessage[];
@@ -15,6 +28,9 @@ interface ChatStreamProps {
   onApplyToFile: (filepath: string, code: string) => void;
   onApplyAllFiles: (files: { path: string; content: string }[]) => void;
   activeModelName: string;
+  files?: ProjectFile[];
+  externalPrompt?: string;
+  onClearExternalPrompt?: () => void;
 }
 
 const PERSONA_PRESETS = [
@@ -35,11 +51,26 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
   onApplyToFile,
   onApplyAllFiles,
   activeModelName,
+  files = [],
+  externalPrompt,
+  onClearExternalPrompt,
 }) => {
   const [inputPrompt, setInputPrompt] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
+  const [showFilePicker, setShowFilePicker] = useState(false);
+  const [atFilter, setAtFilter] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync external prompt when passed (e.g. from Inspect mode or File Explorer)
+  useEffect(() => {
+    if (externalPrompt) {
+      setInputPrompt((prev) => (prev ? prev + ' ' + externalPrompt : externalPrompt));
+      if (onClearExternalPrompt) onClearExternalPrompt();
+      textareaRef.current?.focus();
+    }
+  }, [externalPrompt, onClearExternalPrompt]);
 
   // Auto-scroll to bottom of chat
   useEffect(() => {
@@ -52,6 +83,7 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
 
     const text = inputPrompt.trim();
     setInputPrompt('');
+    setShowFilePicker(false);
     await onSendMessage(text, selectedPersona);
   };
 
@@ -62,15 +94,49 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setInputPrompt(val);
+
+    const cursorPos = e.target.selectionStart;
+    const textBeforeCursor = val.slice(0, cursorPos);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+
+    if (atIndex !== -1 && (atIndex === 0 || /\s/.test(textBeforeCursor[atIndex - 1]))) {
+      const query = textBeforeCursor.slice(atIndex + 1);
+      if (!/\s/.test(query)) {
+        setShowFilePicker(true);
+        setAtFilter(query.toLowerCase());
+        return;
+      }
+    }
+    setShowFilePicker(false);
+  };
+
+  const handleSelectMentionFile = (filePath: string) => {
+    const cursorPos = textareaRef.current?.selectionStart || inputPrompt.length;
+    const textBeforeCursor = inputPrompt.slice(0, cursorPos);
+    const textAfterCursor = inputPrompt.slice(cursorPos);
+    const atIndex = textBeforeCursor.lastIndexOf('@');
+
+    if (atIndex !== -1) {
+      const newText = textBeforeCursor.slice(0, atIndex) + '@' + filePath + ' ' + textAfterCursor;
+      setInputPrompt(newText);
+    } else {
+      setInputPrompt(inputPrompt + ' @' + filePath + ' ');
+    }
+    setShowFilePicker(false);
+    textareaRef.current?.focus();
+  };
+
   // Microphone Audio Speech-to-Text
   const handleToggleVoice = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      // Fallback: simulate audio transcription
       setIsRecording(true);
       setTimeout(() => {
         setIsRecording(false);
-        setInputPrompt('Generate a responsive analytics dashboard with dark mode and live charts.');
+        setInputPrompt('Generate a responsive analytics dashboard with Hono D1 and live charts.');
       }, 1500);
       return;
     }
@@ -89,7 +155,7 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
       recognition.onstart = () => setIsRecording(true);
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
-        setInputPrompt(prev => (prev ? prev + ' ' + transcript : transcript));
+        setInputPrompt((prev) => (prev ? prev + ' ' + transcript : transcript));
         setIsRecording(false);
       };
       recognition.onerror = () => setIsRecording(false);
@@ -108,7 +174,7 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
     }
 
     // Assistant message: extract files
-    const { files } = extractFilesFromResponse(msg.content);
+    const { files: parsedFiles } = extractFilesFromResponse(msg.content);
 
     // Split markdown by code blocks to interleave text and CodeBlock components
     const codeBlockRegex = /```([a-zA-Z0-9_-]+)?(?:\s+(?:<!--|\/\/|\/\*)\s*filepath:\s*([^\s*>-]+)\s*(?:-->|\*\/)?)?\n([\s\S]*?)```/g;
@@ -162,26 +228,26 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
               <Zap className="w-3.5 h-3.5 text-cyan-400" />
               <span>Model Tool Executions ({msg.toolCalls.length})</span>
             </div>
-            {msg.toolCalls.map(tc => (
-              <ToolCallCard key={tc.id} toolCall={tc} onRunInCanvas={onRunInCanvas} />
+            {msg.toolCalls.map((tc) => (
+              <ToolCallCard key={tc.id} toolCall={tc} />
             ))}
           </div>
         )}
 
-        {/* Content parts */}
         {parts.length > 0 ? parts : <div className="text-sm text-slate-200">{msg.content}</div>}
 
-        {/* Action Button: Apply All Files to Project Workspace */}
-        {files.length > 0 && (
-          <div className="pt-2 flex items-center justify-between border-t border-slate-800">
-            <div className="text-xs text-slate-400">
-              Generated {files.length} project file{files.length > 1 ? 's' : ''}
-            </div>
+        {/* Quick Batch Apply Bar if files were generated */}
+        {parsedFiles.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+            <span className="text-slate-400 font-mono">
+              Generated {parsedFiles.length} project {parsedFiles.length === 1 ? 'file' : 'files'}
+            </span>
             <button
-              onClick={() => onApplyAllFiles(files)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 text-xs font-semibold transition-colors cursor-pointer"
+              type="button"
+              onClick={() => onApplyAllFiles(parsedFiles)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors cursor-pointer"
             >
-              <Check className="w-3.5 h-3.5 text-cyan-400" />
+              <Check className="w-3.5 h-3.5" />
               <span>Apply All to Workspace</span>
             </button>
           </div>
@@ -190,35 +256,35 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
     );
   };
 
+  const matchingFiles = files.filter((f) => f.path.toLowerCase().includes(atFilter));
+
   return (
-    <div className="flex flex-col h-full bg-slate-950 font-sans text-slate-100 overflow-hidden">
-      {/* Persona Presets Bar */}
-      <div className="px-4 py-2 border-b border-slate-800 bg-slate-950 flex items-center gap-2 overflow-x-auto shrink-0 scrollbar-none">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0">
+    <div className="flex flex-col h-full bg-transparent text-slate-100 overflow-hidden">
+      {/* Persona Presets Bar (Tier 1 Glass) */}
+      <div className="flex items-center gap-1.5 p-2 glass-surface-1 border-x-0 border-t-0 overflow-x-auto scrollbar-none shrink-0">
+        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider pl-1.5 mr-1 shrink-0">
           Codex Persona:
         </span>
-        {PERSONA_PRESETS.map(p => {
-          const isSelected = selectedPersona === p.name;
-          return (
-            <button
-              key={p.id}
-              onClick={() => onSelectPersona(p.name)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium shrink-0 transition-colors cursor-pointer ${
-                isSelected
-                  ? 'bg-cyan-950 border border-cyan-600 text-cyan-300 font-semibold shadow-sm'
-                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <span>{p.icon}</span>
-              <span>{p.name}</span>
-            </button>
-          );
-        })}
+        {PERSONA_PRESETS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onSelectPersona(p.name)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
+              selectedPersona === p.name
+                ? 'glass-surface-2 text-white font-semibold'
+                : 'bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300'
+            }`}
+          >
+            <span>{p.icon}</span>
+            <span>{p.name}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Messages Stream */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map(msg => {
+      {/* Message Stream */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        {messages.map((msg) => {
           const isUser = msg.sender === 'user';
           return (
             <div
@@ -226,20 +292,20 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
               className={`flex items-start gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
             >
               {!isUser && (
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-md mt-0.5">
+                <div className="w-7 h-7 rounded-lg bg-cyan-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-md mt-0.5">
                   💧
                 </div>
               )}
 
               <div
-                className={`rounded-2xl p-4 shadow-md min-w-0 ${
+                className={`max-w-2xl rounded-2xl p-4 transition-all ${
                   isUser
-                    ? 'bg-cyan-600 text-white rounded-br-sm max-w-[85%]'
-                    : 'bg-slate-900 border border-slate-800 text-slate-100 rounded-bl-sm w-full overflow-hidden'
+                    ? 'glass-bubble-user text-slate-100'
+                    : 'glass-surface-2 text-slate-100'
                 }`}
               >
                 {!isUser && (
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 mb-2 border-b border-slate-800">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 mb-2 border-b border-white/10">
                     <div className="flex items-center gap-1.5 font-mono text-cyan-400 font-semibold">
                       <span>{msg.model || activeModelName}</span>
                       {msg.persona && (
@@ -265,17 +331,17 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
           );
         })}
 
-        {/* Loading Indicator */}
+        {/* Loading Indicator (Tier 2 Glass) */}
         {isLoading && (
           <div className="flex items-start gap-3">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-md">
               💧
             </div>
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-slate-200 text-sm flex items-center gap-3">
+            <div className="p-4 rounded-2xl glass-surface-2 text-slate-100 text-sm flex items-center gap-3">
               <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
               <div className="flex items-center gap-2">
-                <span>Codex is synthesizing application structure & calling tools...</span>
-                <span className="text-xs text-cyan-400 font-mono">[Reasoning Active]</span>
+                <span>Codex is synthesizing Hono edge application & running sandbox...</span>
+                <span className="text-xs text-cyan-300 font-mono">[Reasoning Active]</span>
               </div>
             </div>
           </div>
@@ -284,34 +350,70 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Composer Section (Matching IMG 4: Ask Lovable... / Build / Mic / Send) */}
-      <div className="p-4 bg-slate-950 border-t border-slate-800">
-        <form onSubmit={handleSubmit} className="relative rounded-2xl bg-slate-900 border border-slate-800 focus-within:border-cyan-500 transition-colors shadow-2xl p-2.5">
+      {/* Floating Tier 3 Wish Composer Pinned at Bottom */}
+      <div className="p-3.5 pt-2 bg-gradient-to-t from-[#060810]/90 via-[#060810]/40 to-transparent relative shrink-0">
+        {showFilePicker && matchingFiles.length > 0 && (
+          <div className="absolute bottom-full left-4 right-4 mb-2 glass-surface-2 rounded-xl p-2 z-30 max-h-48 overflow-y-auto animate-fadeIn">
+            <div className="text-[10px] font-bold text-slate-300 uppercase tracking-wider px-2 py-1 flex items-center gap-1">
+              <AtSign className="w-3 h-3 text-cyan-400" />
+              <span>Reference Sandbox File (/home/user/webapp):</span>
+            </div>
+            <div className="space-y-0.5 mt-1">
+              {matchingFiles.map((f) => (
+                <button
+                  key={f.path}
+                  type="button"
+                  onClick={() => handleSelectMentionFile(f.path)}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-mono text-slate-200 hover:bg-cyan-500/15 hover:text-cyan-200 transition-colors cursor-pointer"
+                >
+                  <FileCode className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span className="truncate">{f.path}</span>
+                  <span className="text-[10px] text-slate-400 ml-auto shrink-0 font-sans">
+                    {(f.content.length / 1024).toFixed(1)} KB
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <form
+          onSubmit={handleSubmit}
+          className="relative rounded-2xl glass-surface-3 focus-within:ring-2 focus-within:ring-violet-400/50 transition-all p-2.5"
+        >
           <textarea
+            ref={textareaRef}
             value={inputPrompt}
-            onChange={(e) => setInputPrompt(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask Codex... (e.g. 'Build an interactive dashboard for the LiquidOS Mercury Vault' or 'Add SQL query console')"
+            placeholder="Ask Codex... (e.g. 'Build an interactive dashboard with Hono and Cloudflare D1' or type @ to reference file)"
             rows={2}
-            className="w-full bg-transparent text-sm text-slate-100 placeholder-slate-500 resize-none focus:outline-none p-1.5 font-sans leading-relaxed"
+            className="w-full bg-transparent text-sm text-slate-100 placeholder-slate-400 resize-none focus:outline-none p-1.5 font-sans leading-relaxed"
           />
 
-          <div className="flex items-center justify-between pt-2 border-t border-slate-800 mt-1">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center justify-between pt-2 border-t border-white/10 mt-1">
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
               {/* Quick Template Prompt suggestions */}
               <button
                 type="button"
-                onClick={() => setInputPrompt('Add an interactive SQLite WAL query console with sample table data.')}
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
+                onClick={() => setInputPrompt('Add a Hono API endpoint /api/users with D1 database query and KV caching.')}
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs transition-colors cursor-pointer whitespace-nowrap"
               >
-                + Add SQL Console
+                + Hono D1 API
               </button>
               <button
                 type="button"
-                onClick={() => setInputPrompt('Simulate a packet fault and verify the SHA-256 tamper-evident rollback.')}
-                className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
+                onClick={() => setInputPrompt('Configure Cloudflare R2 object storage upload endpoint in /home/user/webapp/src/index.ts')}
+                className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs transition-colors cursor-pointer whitespace-nowrap"
               >
-                + Test Rollback
+                + R2 Upload
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputPrompt('Deploy application to Genspark Hosting with automatic SSL and D1 provisioning')}
+                className="hidden lg:inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs transition-colors cursor-pointer whitespace-nowrap"
+              >
+                + Genspark Edge
               </button>
             </div>
 
@@ -322,19 +424,19 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
                 onClick={handleToggleVoice}
                 className={`p-2 rounded-xl transition-colors cursor-pointer ${
                   isRecording
-                    ? 'bg-rose-600 text-white animate-pulse'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-white/10 hover:bg-white/15 text-slate-200 border border-white/10'
                 }`}
                 title={isRecording ? 'Listening... click to stop' : 'Transcribe voice prompt'}
               >
                 <Mic className="w-4 h-4" />
               </button>
 
-              {/* Build button (Matching Lovable IMG 4) */}
+              {/* Build button */}
               <button
                 type="submit"
                 disabled={!inputPrompt.trim() || isLoading}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:hover:bg-cyan-600 text-white text-xs font-semibold transition-all shadow-md active:scale-95 cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 disabled:opacity-40 text-white text-xs font-semibold transition-all shadow-md active:scale-95 cursor-pointer"
               >
                 <span>Build</span>
                 <ArrowUp className="w-3.5 h-3.5" />

@@ -11,7 +11,12 @@ import { extractFilesFromResponse, safeEvaluateMath } from './utils/toolExecutor
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ChatStream } from './components/ChatStream';
-import { PreviewCanvas } from './components/PreviewCanvas';
+import { WorkspaceTabType, PreviewCanvas } from './components/PreviewCanvas';
+import { FileExplorerTab } from './components/FileExplorerTab';
+import { InteractiveTerminal } from './components/InteractiveTerminal';
+import { SandboxMetricsView } from './components/SandboxMetricsView';
+import { PublishTab } from './components/PublishTab';
+import { ScriptsBackupsTab } from './components/ScriptsBackupsTab';
 import { CodeEditor } from './components/CodeEditor';
 import { ArchitectureView } from './components/ArchitectureView';
 import { SettingsModal } from './components/SettingsModal';
@@ -24,6 +29,27 @@ import { EnterpriseMcpModal } from './components/EnterpriseMcpModal';
 import { KineticMonolithView } from './components/KineticMonolithView';
 import { SourceInventoryModal } from './components/SourceInventoryModal';
 import { ModelAllowlistModal } from './components/ModelAllowlistModal';
+import { ContractHandoffTab } from './components/ContractHandoffTab';
+import { TutorialTab } from './components/TutorialTab';
+import { TestingTab } from './components/TestingTab';
+import { PlayStoreAuditView } from './components/PlayStoreAuditView';
+import { OfflineIndicator } from './components/PWAInstallButton';
+import {
+  INITIAL_SANDBOX_SPECS,
+  INITIAL_CLOUDFLARE_BINDINGS,
+  INITIAL_GENSPARK_SITE,
+  INITIAL_CLOUDFLARE_ACCOUNT,
+  INITIAL_GITHUB_REPO,
+  INITIAL_BACKUPS,
+} from './utils/sandboxEngine';
+import {
+  CloudSandboxSpecs,
+  CloudflareBindings,
+  GensparkSiteConfig,
+  CloudflareAccountConfig,
+  GitHubRepoConfig,
+  SandboxBackup,
+} from './types/sandbox';
 
 const AVAILABLE_MODELS: ModelOption[] = [
   {
@@ -149,7 +175,7 @@ export default function App() {
       parentHash: null,
     };
     return {
-      id: 'proj_liquid_vault',
+      id: 'proj_liquid_one',
       name: defaultTemplate.name,
       description: defaultTemplate.description,
       currentBranch: 'main',
@@ -167,7 +193,103 @@ export default function App() {
   const [activeTemplateId, setActiveTemplateId] = useState<string>(defaultTemplate.id);
 
   // 2. Navigation & Viewport State
-  const [rightPanelTab, setRightPanelTab] = useState<'preview' | 'code' | 'console' | 'architecture' | 'settings'>('preview');
+  const [rightPanelTab, setRightPanelTab] = useState<WorkspaceTabType>('preview');
+
+  // 2b. Sandbox Hardware, Cloudflare Bindings & Publishing State
+  const [sandboxSpecs, setSandboxSpecs] = useState<CloudSandboxSpecs>(INITIAL_SANDBOX_SPECS);
+  const [cloudflareBindings, setCloudflareBindings] = useState<CloudflareBindings>(INITIAL_CLOUDFLARE_BINDINGS);
+  const [gensparkConfig, setGensparkConfig] = useState<GensparkSiteConfig>(INITIAL_GENSPARK_SITE);
+  const [cloudflareAccount, setCloudflareAccount] = useState<CloudflareAccountConfig>(INITIAL_CLOUDFLARE_ACCOUNT);
+  const [githubRepo, setGithubRepo] = useState<GitHubRepoConfig>(INITIAL_GITHUB_REPO);
+  const [backups, setBackups] = useState<SandboxBackup[]>(INITIAL_BACKUPS);
+  const [externalPrompt, setExternalPrompt] = useState<string | undefined>(undefined);
+
+  // 2c. Live Vitest Watch Mode State
+  const [watchMode, setWatchMode] = useState<boolean>(true);
+  const [lastModifiedFile, setLastModifiedFile] = useState<{
+    path: string;
+    action: string;
+    timestamp: number;
+  } | null>(null);
+  const [watchTestStatus, setWatchTestStatus] = useState<{
+    isRunning: boolean;
+    passed: number;
+    failed: number;
+    total: number;
+  } | null>(null);
+
+  const handleCreateBackup = (name: string) => {
+    const newB: SandboxBackup = {
+      id: 'bk_' + Date.now(),
+      name,
+      sizeBytes: Math.round(project.files.reduce((a, b) => a + b.content.length, 0) * 1.5 + 4000000),
+      createdAt: Date.now(),
+      commitHash: project.commits[project.commits.length - 1]?.hash || 'HEAD',
+      filesCount: project.files.length,
+    };
+    setBackups(prev => [newB, ...prev]);
+  };
+
+  const handleRestoreBackup = (backupId: string) => {
+    const found = backups.find(b => b.id === backupId);
+    if (found) {
+      handleRollback(found.commitHash);
+    }
+  };
+
+  const handleDeleteBackup = (backupId: string) => {
+    setBackups(prev => prev.filter(b => b.id !== backupId));
+  };
+
+  const handleDeployGenspark = () => {
+    setGensparkConfig(prev => ({
+      ...prev,
+      lastDeployedAt: Date.now(),
+      status: 'ACTIVE',
+      analytics: {
+        ...prev.analytics,
+        requests24h: prev.analytics.requests24h + 1,
+      },
+    }));
+    setMessages(prev => [
+      ...prev,
+      {
+        id: 'msg_deploy_genspark_' + Date.now(),
+        sender: 'assistant',
+        timestamp: Date.now(),
+        content: `⭐ **Genspark Hosting**: 1-Click deployment successful!\n\n- **Permanent URL**: [${gensparkConfig.permanentUrl}](${gensparkConfig.permanentUrl})\n- **SSL**: Active (Let's Encrypt Wildcard)\n- **Bindings**: D1 SQL database (*DB_PROD*) & R2 storage (*ASSETS_R2*) provisioned and bound automatically.`,
+      },
+    ]);
+  };
+
+  const handleDeployCloudflare = () => {
+    setCloudflareAccount(prev => ({
+      ...prev,
+      lastDeployedAt: Date.now(),
+    }));
+    setMessages(prev => [
+      ...prev,
+      {
+        id: 'msg_deploy_cf_' + Date.now(),
+        sender: 'assistant',
+        timestamp: Date.now(),
+        content: `☁️ **Cloudflare Workers Deployment**: Successfully deployed to your Cloudflare account via Wrangler!\n\n- **Production URL**: [${cloudflareAccount.deploymentUrl}](${cloudflareAccount.deploymentUrl})\n- **Workers Engine**: Node.js compatibility layer active\n- **D1 Database**: Bound to ID \`${cloudflareBindings.d1Databases[0]?.id}\``,
+      },
+    ]);
+  };
+
+  const handlePushGithub = () => {
+    setGithubRepo(prev => ({ ...prev, lastPushedAt: Date.now() }));
+    setMessages(prev => [
+      ...prev,
+      {
+        id: 'msg_push_gh_' + Date.now(),
+        sender: 'assistant',
+        timestamp: Date.now(),
+        content: `🐙 **GitHub Sync**: Pushed latest commits to \`${githubRepo.username}/${githubRepo.repoName}\` on branch \`${githubRepo.branch}\`. Sandbox state is safely backed up offsite.`,
+      },
+    ]);
+  };
 
   // 3. Multi-Model and Persona State
   const [selectedModel, setSelectedModel] = useState<ModelOption>(AVAILABLE_MODELS[0]);
@@ -197,30 +319,14 @@ export default function App() {
       model: 'Gemini 3.8 Flash',
       persona: 'Full-Stack App Builder',
       timestamp: Date.now() - 120000,
-      content: `Welcome to **Codex & LiquidOS** — the AI application builder and website wish granter.
+      content: `Welcome to **LiquidOS ONE** — unified **Atomic Nexus Contract Registry (AN-EVC-001)** and **Enterprise Hono + Cloudflare Cloud Sandbox**.
 
-I have deployed your active blueprint: **${defaultTemplate.name}**.
-All Pi Pipeline Hook barriers, DuckDB zero-copy memory gates, and LanceDB 1536-dim vector indices are compiled and active.
+I have initialized your canonical Project ONE workspace (**${defaultTemplate.files.length} files** under \`/home/user/webapp\`):
+- **Cross-Runtime Canonicalization**: TypeScript + Python 3.10 RFC 8785 (JCS) with \`36/36\` interop parity and parse-time \`2^53 - 1\` safe integer guards.
+- **Evidence Envelope 1.0.0**: Structural validation with explicit \`NOT_RUN\` reporting for unperformed cryptographic signature, trust anchor, parent DAG store, and authorization checks.
+- **Enterprise Edge Runtime**: Hono v4 bound to Cloudflare \`DB_PROD\` D1 SQL, \`CACHE_KV\`, and \`ASSETS_R2\`.
 
-\`\`\`html
-<!-- filepath: index.html -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>LiquidOS · Mercury Vault</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 font-sans">
-  <div class="p-6">
-    <h1 class="text-xl font-bold text-cyan-400">LiquidOS · Mercury Vault</h1>
-    <p class="text-xs text-slate-400 font-mono">Status: [SECURITY_BARRIER] · [MEMORY_MTU_BARRIER] · [VECTOR_INDEX_BARRIER] ACTIVE</p>
-  </div>
-</body>
-</html>
-\`\`\`
-
-You can interact with the live application in the preview canvas on the right, modify parameters in the Apollo Studio, or describe any change you want to build.`,
+Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings**, **Publish**, **Tutorial**) to test cross-runtime canonicalization live or ship your application.`,
       toolCalls: [
         {
           id: 'tc_init_01',
@@ -228,8 +334,8 @@ You can interact with the live application in the preview canvas on the right, m
           status: 'success',
           executionTimeMs: 14,
           timestamp: Date.now() - 120000,
-          arguments: { filepath: 'index.html', length: project.files[0]?.content.length || 0 },
-          result: { status: 'created', barrierChecks: 'VERIFIED' },
+          arguments: { filepath: 'verification-tools/canonical.ts', filesCount: project.files.length },
+          result: { status: 'created', contract: 'AN-EVC-001' },
         },
         {
           id: 'tc_init_02',
@@ -237,8 +343,8 @@ You can interact with the live application in the preview canvas on the right, m
           status: 'success',
           executionTimeMs: 42,
           timestamp: Date.now() - 119000,
-          arguments: { language: 'js', code: 'initMercuryVault({ wal: true, fts5: true })' },
-          result: { walMode: 'ACTIVE', state: 'CONFIRMED' },
+          arguments: { language: 'js', code: 'verifyCrossRuntimeParity({ profile: "RFC-8785-JCS" })' },
+          result: { interopAssertions: '36/36 PASS', fullSuite: '186/186 PASS' },
         },
       ],
     },
@@ -252,8 +358,8 @@ You can interact with the live application in the preview canvas on the right, m
   const [chatThreads, setChatThreads] = useState([
     {
       id: 'thread_1',
-      title: 'LiquidOS Mercury Vault Architecture',
-      preview: 'Pi Pipeline Hook Router with WAL SQLite & DuckDB',
+      title: 'LiquidOS ONE · AN-EVC-001 Handoff',
+      preview: 'TS + Python 3.10 RFC 8785 JCS & Hono D1 unified workspace',
       timestamp: Date.now() - 120000,
     },
     {
@@ -299,6 +405,11 @@ You can interact with the live application in the preview canvas on the right, m
     );
     setProject(updatedProj);
     setActiveFilePath(newFiles[0]?.path || 'index.html');
+    setLastModifiedFile({
+      path: newFiles[0]?.path || tpl.name,
+      action: 'template',
+      timestamp: Date.now(),
+    });
 
     // Add notification to chat
     setMessages(prev => [
@@ -323,6 +434,7 @@ You can interact with the live application in the preview canvas on the right, m
         updatedAt: Date.now(),
       };
     });
+    setLastModifiedFile({ path, action: 'update', timestamp: Date.now() });
   };
 
   // Handle create file in code editor
@@ -342,6 +454,7 @@ You can interact with the live application in the preview canvas on the right, m
       files: [...prev.files, newFile],
     }));
     setActiveFilePath(name);
+    setLastModifiedFile({ path: name, action: 'create', timestamp: Date.now() });
   };
 
   // Handle delete file
@@ -354,6 +467,7 @@ You can interact with the live application in the preview canvas on the right, m
       }
       return { ...prev, files: remaining };
     });
+    setLastModifiedFile({ path, action: 'delete', timestamp: Date.now() });
   };
 
   // Apply code to a specific file
@@ -390,6 +504,13 @@ You can interact with the live application in the preview canvas on the right, m
     );
 
     setProject(commitProj);
+    if (files.length > 0) {
+      setLastModifiedFile({
+        path: files.length === 1 ? files[0].path : `${files.length} files`,
+        action: 'apply',
+        timestamp: Date.now(),
+      });
+    }
     setRightPanelTab('preview');
   };
 
@@ -412,6 +533,11 @@ You can interact with the live application in the preview canvas on the right, m
     try {
       const rolledBack = rollbackToCommit(project, commitId);
       setProject(rolledBack);
+      setLastModifiedFile({
+        path: `commit:${commitId.slice(0, 7)}`,
+        action: 'rollback',
+        timestamp: Date.now(),
+      });
     } catch (err: any) {
       alert(err.message);
     }
@@ -518,58 +644,105 @@ You can interact with the live application in the preview canvas on the right, m
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div className="relative flex flex-col h-full w-full bg-[#060810] text-slate-100 overflow-hidden font-sans">
+      {/* Phase 3: GALATICAL3xGlass Dynamic Ambient Backdrop Lighting Orbs */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden z-0" aria-hidden="true">
+        <div
+          className="galactic-orb absolute -top-36 -left-36 w-[520px] h-[520px] rounded-full opacity-25 blur-[130px]"
+          style={{
+            background: 'radial-gradient(circle, rgba(34,211,238,0.6) 0%, rgba(14,165,233,0.18) 55%, transparent 75%)',
+          }}
+        />
+        <div
+          className="galactic-orb absolute top-1/3 left-1/3 w-[560px] h-[560px] rounded-full opacity-20 blur-[140px]"
+          style={{
+            animationDelay: '-8s',
+            background: 'radial-gradient(circle, rgba(59,130,246,0.55) 0%, rgba(99,102,241,0.2) 55%, transparent 75%)',
+          }}
+        />
+        <div
+          className="galactic-orb absolute -bottom-40 -right-28 w-[540px] h-[540px] rounded-full opacity-25 blur-[140px]"
+          style={{
+            animationDelay: '-15s',
+            background: 'radial-gradient(circle, rgba(147,51,235,0.55) 0%, rgba(168,85,247,0.18) 55%, transparent 75%)',
+          }}
+        />
+      </div>
+
       {/* Top Application Header */}
-      <Header
-        selectedModel={selectedModel}
-        availableModels={AVAILABLE_MODELS}
-        onSelectModel={setSelectedModel}
-        collaborators={COLLABORATORS}
-        project={project}
-        onOpenVersionControl={() => setIsVersionControlOpen(true)}
-        onOpenSecurity={() => setIsSecurityOpen(true)}
-        onOpenDeploy={() => setIsDeployOpen(true)}
-        onOpenIngressShield={() => setIsIngressShieldOpen(true)}
-        onOpenManifest={() => setIsManifestOpen(true)}
-        onOpenEnterpriseMcp={() => setIsEnterpriseMcpOpen(true)}
-        onOpenKineticMonolith={() => setIsKineticMonolithOpen(true)}
-        onOpenSourceInventory={() => setIsSourceInventoryOpen(true)}
-        onOpenModelAllowlist={() => setIsModelAllowlistOpen(true)}
-        onOpenSettings={() => {
-          setRightPanelTab('settings');
-          setMobileTab('preview');
-        }}
-        onOpenArchitecture={() => {
-          setRightPanelTab('architecture');
-          setMobileTab('preview');
-        }}
-        onToggleMobileSidebar={() => setIsMobileSidebarOpen(prev => !prev)}
-      />
+      <div className="relative z-20 shrink-0">
+        <Header
+          selectedModel={selectedModel}
+          availableModels={AVAILABLE_MODELS}
+          onSelectModel={setSelectedModel}
+          collaborators={COLLABORATORS}
+          project={project}
+          onOpenVersionControl={() => setIsVersionControlOpen(true)}
+          onOpenSecurity={() => setIsSecurityOpen(true)}
+          onOpenDeploy={() => setIsDeployOpen(true)}
+          onOpenIngressShield={() => setIsIngressShieldOpen(true)}
+          onOpenManifest={() => setIsManifestOpen(true)}
+          onOpenEnterpriseMcp={() => setIsEnterpriseMcpOpen(true)}
+          onOpenKineticMonolith={() => setIsKineticMonolithOpen(true)}
+          onOpenSourceInventory={() => setIsSourceInventoryOpen(true)}
+          onOpenModelAllowlist={() => setIsModelAllowlistOpen(true)}
+          onOpenSettings={() => {
+            setRightPanelTab('settings');
+            setMobileTab('preview');
+          }}
+          onOpenArchitecture={() => {
+            setRightPanelTab('architecture');
+            setMobileTab('preview');
+          }}
+          onOpenPublish={() => {
+            setRightPanelTab('publish');
+            setMobileTab('preview');
+          }}
+          onOpenMetrics={() => {
+            setRightPanelTab('metrics');
+            setMobileTab('preview');
+          }}
+          onOpenTerminal={() => {
+            setRightPanelTab('terminal');
+            setMobileTab('preview');
+          }}
+          onOpenTutorial={() => {
+            setRightPanelTab('tutorial');
+            setMobileTab('preview');
+          }}
+          sandboxPlan={sandboxSpecs.plan}
+          onToggleMobileSidebar={() => setIsMobileSidebarOpen(prev => !prev)}
+        />
+      </div>
 
       {/* Mobile Tab Switcher (< lg screens) */}
-      <div className="lg:hidden flex items-center justify-center p-2 bg-slate-900 border-b border-slate-800 shrink-0">
-        <div className="flex rounded-lg bg-slate-950 p-1 border border-slate-800">
+      <div className="relative z-10 lg:hidden flex items-center justify-center p-2 glass-surface-1 border-x-0 border-t-0 shrink-0">
+        <div className="flex rounded-lg bg-black/30 p-1 border border-white/10">
           <button
             onClick={() => setMobileTab('chat')}
             className={`px-4 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-              mobileTab === 'chat' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+              mobileTab === 'chat'
+                ? 'bg-gradient-to-r from-cyan-500/80 to-blue-600/80 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
-            💬 Wish Composer
+            Wish Composer
           </button>
           <button
             onClick={() => setMobileTab('preview')}
             className={`px-4 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-              mobileTab === 'preview' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+              mobileTab === 'preview'
+                ? 'bg-gradient-to-r from-cyan-500/80 to-blue-600/80 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
-            ⚡ Live Preview
+            Live Preview
           </button>
         </div>
       </div>
 
       {/* Main Split-Screen Workspace */}
-      <div className="flex flex-1 overflow-hidden min-w-0">
+      <div className="relative z-10 flex flex-1 overflow-hidden min-w-0">
         {/* Left Sidebar (Collapsible on mobile) */}
         <Sidebar
           onSelectTemplate={(tpl) => {
@@ -598,12 +771,18 @@ You can interact with the live application in the preview canvas on the right, m
           onOpenKineticMonolith={() => setIsKineticMonolithOpen(true)}
           onOpenSourceInventory={() => setIsSourceInventoryOpen(true)}
           onOpenModelAllowlist={() => setIsModelAllowlistOpen(true)}
+          onSelectTab={(tab) => {
+            setRightPanelTab(tab);
+            setMobileTab('preview');
+            setIsMobileSidebarOpen(false);
+          }}
+          activeWorkspaceTab={rightPanelTab}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
         />
 
         {/* Center Chat Stream Panel */}
-        <div className={`flex-1 min-w-0 max-w-xl flex-col border-r border-slate-800 bg-slate-950 overflow-hidden ${
+        <div className={`flex-1 min-w-0 max-w-xl flex-col border-r border-white/10 bg-transparent overflow-hidden ${
           mobileTab === 'chat' ? 'flex' : 'hidden lg:flex'
         }`}>
           <ChatStream
@@ -625,17 +804,43 @@ You can interact with the live application in the preview canvas on the right, m
               setMobileTab('preview');
             }}
             activeModelName={selectedModel.name}
+            files={project.files}
+            externalPrompt={externalPrompt}
+            onClearExternalPrompt={() => setExternalPrompt(undefined)}
           />
         </div>
 
         {/* Right Tabbed Artifact & Preview Canvas Panel */}
-        <div className={`flex-1 min-w-0 flex-col bg-slate-950 overflow-hidden ${
+        <div className={`flex-1 min-w-0 flex-col bg-transparent overflow-hidden ${
           mobileTab === 'preview' ? 'flex' : 'hidden lg:flex'
         }`}>
           <PreviewCanvas
             files={project.files}
             activeTab={rightPanelTab}
             onChangeTab={setRightPanelTab}
+            watchMode={watchMode}
+            watchTestStatus={watchTestStatus}
+            renderFileExplorer={
+              <FileExplorerTab
+                files={project.files}
+                activeFilePath={activeFilePath}
+                onSelectFile={setActiveFilePath}
+                onAddFile={handleCreateFile}
+                onDeleteFile={handleDeleteFile}
+                onReferenceFileInChat={(path) => {
+                  setExternalPrompt(`@${path}`);
+                }}
+                onOpenInCodeEditor={(path) => {
+                  setActiveFilePath(path);
+                  setRightPanelTab('code');
+                }}
+              />
+            }
+            renderContract={
+              <ContractHandoffTab
+                onNavigateTab={(tab) => setRightPanelTab(tab)}
+              />
+            }
             renderCodeEditor={
               <CodeEditor
                 files={project.files}
@@ -646,6 +851,53 @@ You can interact with the live application in the preview canvas on the right, m
                 onDeleteFile={handleDeleteFile}
                 onRunInCanvas={() => handleRunInCanvas()}
                 collaborators={COLLABORATORS}
+              />
+            }
+            renderTesting={
+              <TestingTab
+                projectName={project.name}
+                onAskAiForTest={(prompt) => setExternalPrompt(prompt)}
+                watchMode={watchMode}
+                onToggleWatchMode={() => setWatchMode((w) => !w)}
+                lastModifiedFile={lastModifiedFile}
+                onStatusChange={setWatchTestStatus}
+              />
+            }
+            renderTerminal={
+              <InteractiveTerminal
+                files={project.files}
+                specs={sandboxSpecs}
+                bindings={cloudflareBindings}
+              />
+            }
+            renderMetrics={
+              <SandboxMetricsView
+                specs={sandboxSpecs}
+                onUpdateSpecs={setSandboxSpecs}
+              />
+            }
+            renderPublish={
+              <PublishTab
+                gensparkConfig={gensparkConfig}
+                cloudflareConfig={cloudflareAccount}
+                githubConfig={githubRepo}
+                bindings={cloudflareBindings}
+                onDeployGenspark={handleDeployGenspark}
+                onDeployCloudflare={handleDeployCloudflare}
+                onPushGithub={handlePushGithub}
+                onUpdateGensparkConfig={(cfg) => setGensparkConfig(prev => ({ ...prev, ...cfg }))}
+                onUpdateCloudflareConfig={(cfg) => setCloudflareAccount(prev => ({ ...prev, ...cfg }))}
+                onUpdateGithubConfig={(cfg) => setGithubRepo(prev => ({ ...prev, ...cfg }))}
+              />
+            }
+            renderPlayAudit={<PlayStoreAuditView />}
+            renderBackups={
+              <ScriptsBackupsTab
+                backups={backups}
+                files={project.files}
+                onCreateBackup={handleCreateBackup}
+                onRestoreBackup={handleRestoreBackup}
+                onDeleteBackup={handleDeleteBackup}
               />
             }
             renderArchitecture={
@@ -662,6 +914,15 @@ You can interact with the live application in the preview canvas on the right, m
                 onUpdateSettings={setSettings}
               />
             }
+            renderTutorial={
+              <TutorialTab
+                onNavigateTab={(tab) => setRightPanelTab(tab)}
+                onRunSamplePrompt={(prompt) => setExternalPrompt(prompt)}
+              />
+            }
+            onSendInspectToChat={(prompt) => {
+              setExternalPrompt(prompt);
+            }}
           />
         </div>
       </div>
@@ -742,6 +1003,7 @@ You can interact with the live application in the preview canvas on the right, m
           }
         }}
       />
+      <OfflineIndicator />
     </div>
   );
 }

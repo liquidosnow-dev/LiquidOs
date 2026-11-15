@@ -11,7 +11,7 @@
  * 8. Targeted fault recovery & ROLLBACK_TO_SOURCE isolation
  */
 
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   evaluateIngressShield,

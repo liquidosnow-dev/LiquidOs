@@ -85,7 +85,28 @@ export function safeEvaluateMath(expression: string): { success: boolean; result
 export function bundlePreviewHtml(files: ProjectFile[]): string {
   const htmlFile = files.find(f => f.path.endsWith('.html') || f.name === 'index.html') || files[0];
   const cssFiles = files.filter(f => f.path.endsWith('.css') || f.name.endsWith('.css'));
-  const jsFiles = files.filter(f => (f.path.endsWith('.js') || f.path.endsWith('.ts') || f.name.endsWith('.js')) && !f.path.endsWith('.html'));
+  // Only include browser-runnable client JS files in preview (exclude TypeScript, server, CLI, verification-tools, and test modules)
+  const isNonBrowserModule = (path: string) => {
+    const p = path.toLowerCase();
+    return (
+      p.startsWith('server.') ||
+      p.startsWith('src/index.') ||
+      p.startsWith('src/server.') ||
+      p.startsWith('src/lib/') ||
+      p.startsWith('verification-tools/') ||
+      p.startsWith('tests/') ||
+      p.includes('/api/') ||
+      p.endsWith('.config.ts') ||
+      p.endsWith('.mjs')
+    );
+  };
+
+  const clientJsFiles = files.filter(
+    (f) =>
+      f.path.endsWith('.js') &&
+      !f.path.endsWith('.test.js') &&
+      !isNonBrowserModule(f.path)
+  );
 
   let baseHtml = htmlFile ? htmlFile.content : '<div class="p-8 text-center text-slate-500">No HTML file provided</div>';
 
@@ -146,9 +167,12 @@ export function bundlePreviewHtml(files: ProjectFile[]): string {
 
   baseHtml = baseHtml.replace('<head>', `<head>${consoleScript}`);
 
-  if (jsFiles.length > 0) {
-    const combinedJs = jsFiles.map(j => `// ${j.name}\n${j.content}`).join('\n\n');
-    baseHtml = baseHtml.replace('</body>', `<script>\n${combinedJs}\n</script>\n</body>`);
+  if (clientJsFiles.length > 0) {
+    for (const j of clientJsFiles) {
+      const hasModules = j.content.includes('import ') || j.content.includes('export ');
+      const scriptTag = hasModules ? `<script type="module">\n// ${j.name}\n${j.content}\n</script>` : `<script>\n// ${j.name}\n${j.content}\n</script>`;
+      baseHtml = baseHtml.replace('</body>', `${scriptTag}\n</body>`);
+    }
   }
 
   return baseHtml;

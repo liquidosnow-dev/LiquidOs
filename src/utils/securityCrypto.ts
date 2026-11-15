@@ -7,8 +7,12 @@ function rightRotate(value: number, amount: number) {
   return (value >>> amount) | (value << (32 - amount));
 }
 
-export function sha256Hex(ascii: string): string {
-
+export function sha256Hex(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let ascii = '';
+  for (let idx = 0; idx < bytes.length; idx++) {
+    ascii += String.fromCharCode(bytes[idx]);
+  }
 
   const mathPow = Math.pow;
   const maxWord = mathPow(2, 32);
@@ -31,14 +35,13 @@ export function sha256Hex(ascii: string): string {
     0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
     0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0x0bef9a3f, 0xc67178f2,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
   ];
 
   ascii += '\x80';
   while (ascii.length % 64 - 56) ascii += '\x00';
   for (i = 0; i < ascii.length; i++) {
     j = ascii.charCodeAt(i);
-    if (j >> 8) return ''; // ASCII only
     words[i >> 2] |= j << ((3 - i) % 4) * 8;
   }
   words[words.length] = (asciiBitLength / maxWord) | 0;

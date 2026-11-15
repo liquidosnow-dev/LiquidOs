@@ -1,0 +1,1534 @@
+Reading the R=P decision literally: the doc says "start with verification-tools/, schemas/, and agent-toolkit/" and names the next milestone as the Contract Registry. It also states its own status as "no source inspected or executed."
+
+So "show time" means: don't describe the contract — execute it. The one thing that would make this real is the critical integration requirement the doc flags — "Python and TypeScript verifiers must agree on the exact bytes being hashed and signed." That's the failure mode that silently splits a coalition.
+
+Let me check the substrate I already have.
+
+Bash Command
+cd /home/user/webapp && sed -n '17,35p' src/lib/chain.ts; echo "=== python ==="; python3 -c 'import json,hashlib,sys; print(sys.version.split()[0])'
+View
+export const GENESIS = '0'.repeat(64)
+
+/** Deterministic JSON: sorted keys, no whitespace. Same input → same string. */
+...
+
+export type ChainLink = {
+=== python ===
+3.13.14
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && node -e ' // Divergence probe: does Python json == JS JSON.stringify on edge cases? const cases=[{a:1.0},{a:1.5},{a:-0},{"é":"ü"},{"k":"\u0000\u001f"},{"n":1e21},{"s":"\\\""}]; for(const c of cases) console.log(JSON.stringify(JSON.stringify(c))); ' ; echo "--- python ---"; python3 -c ' import json cases=[{"a":1.0},{"a":1.5},{"a":-0.0},{"é":"ü"},{"k":"\u0000\u001f"},{"n":1e21},{"s":"\\\""}] for c in cases: print(json.dumps(json.dumps(c,separators=(",",":"),ensure_ascii=False,sort_keys=True),ensure_ascii=False)) '
+View
+"{\"a\":1}"
+"{\"a\":1.5}"
+"{\"a\":0}"
+...
+"{\"é\":\"ü\"}"
+"{\"k\":\"\\u0000\\u001f\"}"
+"{\"n\":1e+21}"
+"{\"s\":\"\\\\\\\"\"}"
+Exit Code: 0
+The probe just paid for itself. Four divergences between the two runtimes, on the exact bytes that get hashed:
+
+Input	JS JSON.stringify	Python json.dumps
+1.0	{"a":1}	{"a":1.0}
+-0.0	{"a":0}	{"a":-0.0}
+"é"	"é"	"\u00e9" (default ensure_ascii=True)
+That is precisely the failure the doc flags: "the same manifest could pass one implementation and fail another." Let me confirm the nastiest one — key sort order above the BMP.
+
+Bash Command
+cd /tmp && node -e ' const o={}; o["\uFFFF"]=1; o["\uD83D\uDE00"]=2; console.log("JS :", JSON.stringify(Object.keys(o).sort())); ' ; python3 -c ' o={"\uFFFF":1,"\U0001F600":2} print("PY :", end=" ") import json; print(json.dumps(sorted(o.keys()))) '
+View
+JS  : ["😀","￿"]
+PY  : ["\uffff", "\ud83d\ude00"]
+Exit Code: 0
+Bash Command
+cd /tmp && node -e 'console.log("JS :", JSON.stringify(["\u2028","\u00e9","\u0007"]))' ; python3 -c 'import json; print("PY :", json.dumps(["\u2028","\u00e9","\u0007"]))'; echo "--- bigint/precision ---"; node -e 'console.log("JS :", JSON.stringify(0.1+0.2), JSON.stringify(1e300*1e10))'; python3 -c 'print("PY :", repr(0.1+0.2), repr(1e300*1e10))'
+View
+JS  : [" ","é","\u0007"]
+PY  : ["\u2028", "\u00e9", "\u0007"]
+--- bigint/precision ---
+JS  : 0.30000000000000004 null
+PY  : 0.30000000000000004 inf
+Exit Code: 0
+Divergence confirmed on the nastiest case. JS sorts keys by UTF-16 code unit; Python sorts by code point — 😀 (U+1F600) sorts before ￿ (U+FFFF) in JS but after it in Python. Plus 1e300*1e10 → JS serializes null, Python inf.
+
+So the doc's own critical requirement — "Python and TypeScript verifiers must agree on the exact bytes being hashed and signed" — fails by default, six ways. That's the thing to fix and prove.
+
+Building the contract registry now, starting with the TypeScript canonicalizer.
+
+Bash Command
+mkdir -p /home/user/webapp/verification-tools /home/user/webapp/schemas && ls /home/user/webapp
+View
+README.md
+dist
+ecosystem.config.cjs
+...
+tsconfig.json
+verification-tools
+vite.config.ts
+wrangler.jsonc
+Exit Code: 0
+The probe found six divergences, all on the exact bytes that get signed. That's the doc's own critical requirement failing by default. Building the Registry to fix and prove it — starting with a JCS-profile canonicalizer in TypeScript.
+
+Write File
+/home/user/webapp/verification-tools/canonical.ts
+View
+// ============================================================================
+// AN-EVC-001 §3 — Canonical serialization (TypeScript reference implementation)
+//
+...
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+The probe found six divergences on the exact bytes that get signed. That's the integration review's own critical requirement failing by default. Now the Python twin — it must produce byte-identical output.
+
+Write File
+/home/user/webapp/verification-tools/canonical.py
+View
+#!/usr/bin/env python3
+"""
+AN-EVC-001 §3.1 — Canonical serialization (Python reference implementation).
+...
+    except CanonicalError as e:
+        sys.stdout.write(json.dumps({"error": e.code, "message": e.message}))
+    except json.JSONDecodeError as e:
+        sys.stdout.write(json.dumps({"error": "EVC_JSON", "message": str(e)}))
+Continuing the Registry. First, cleaning a dead no-op loop I left in the Python list branch.
+
+Edit File
+/home/user/webapp/verification-tools/canonical.py
+View
+--- a//home/user/webapp/verification-tools/canonical.py+++ b//home/user/webapp/verification-tools/canonical.py@@ -171,9 +171,6 @@     if isinstance(value, str):
+         return canonical_string(value)
+     if isinstance(value, (list, tuple)):
+-        for el in value:
+-            if el is None and el is not _SENTINEL:
+-                pass
+         return "[" + ",".join(canonicalize(v) for v in value) + "]"
+     if isinstance(value, dict):
+         parts = []
+Both canonicalizers written. Now the decisive step — prove they agree on byte-identical output, including the six cases where the runtimes diverge by default.
+
+Write File
+/home/user/webapp/schemas/canonicalization-vectors.json
+View
+{
+  "contract": "AN-EVC-001",
+  "version": "1.0.0-draft",
+...
+    { "id": "R03-int-unsafe", "input": "9007199254740993", "expect_error": "EVC_INT_UNSAFE" },
+    { "id": "R04-undefined", "input": "UNDEFINED", "expect_error": "EVC_UNDEFINED" }
+  ]
+}
+Vectors written. Now the decisive part — the harness that runs both implementations against the same vectors and compares actual bytes.
+
+Write File
+/home/user/webapp/verification-tools/interop.mjs
+View
+#!/usr/bin/env node
+// ============================================================================
+// AN-EVC-001 — cross-runtime interoperability harness
+...
+main().catch((e) => {
+  console.error('\x1b[31mharness error:\x1b[0m', e)
+  process.exit(1)
+})
+Bash Command
+cd /home/user/webapp && node verification-tools/interop.mjs 2>&1 | tail -45
+View
+
+[1mAN-EVC-001 — canonical serialization, cross-runtime[0m
+[90mnode v22.23.4 · python3 3.13.14[0m
+...
+    at main (file:///home/user/webapp/verification-tools/interop.mjs:107:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
+  code: 'EVC_INT_UNSAFE'
+}
+Exit Code: 0
+The harness caught a real defect — in my own code, not the contract. 1e21 is an integer above 2^53, so my EVC_INT_UNSAFE guard rejected it, but 1e21 is exactly representable and JCS mandates 1e+21. The guard was over-firing on large floats. Also V07 shows U+2028/U+2029 rendering raw, which my spec file wrote wrong.
+
+Fixing both — the guard must only fire on values that actually lose precision.
+
+Edit File
+/home/user/webapp/verification-tools/canonical.ts
+View
+--- a//home/user/webapp/verification-tools/canonical.ts+++ b//home/user/webapp/verification-tools/canonical.ts@@ -47,11 +47,49 @@   if (Number.isNaN(n)) throw new CanonicalError('EVC_NONFINITE', 'NaN is not canonicalizable')
+   if (!Number.isFinite(n)) throw new CanonicalError('EVC_NONFINITE', 'Infinity is not canonicalizable')
+   if (Object.is(n, -0)) return '0' // JCS: negative zero serializes as 0
++  // Reject only integers that CANNOT be represented exactly. A previous version
++  // of this guard rejected every integer above 2^53, which wrongly refused 1e21
++  // — a value IEEE 754 stores exactly and JCS serializes as "1e+21". The test
++  // for "is this integer exact at this magnitude" is whether the double has no
++  // fractional part AND round-trips through its own shortest representation.
+   if (Number.isInteger(n) && Math.abs(n) > MAX_SAFE) {
+-    // 2^53+1 would round silently; a rounded digest is a wrong digest.
+-    throw new CanonicalError('EVC_INT_UNSAFE', `integer ${n} exceeds 2^53; encode as string`)
++    // For |n| >= 2^53 every double is an integer, so `Number.isInteger` is not a
++    // signal. What matters is whether the DECIMAL integer the caller wrote
++    // survived. We cannot know the caller's intent here, so the rule is:
++    // values that are exact powers of two times an odd mantissa are exact; we
++    // accept them. Anything else at this magnitude has silently rounded and must
++    // be encoded as a string.
++    if (!isExactlyRepresentableInteger(n)) {
++      throw new CanonicalError('EVC_INT_UNSAFE', `integer ${n} is not exactly representable; encode as string`)
++    }
+   }
+   return String(n) // shortest round-trip, exponential at 1e21 / below 1e-6
++}
++
++/**
++ * Is this large double an exact integer value rather than a rounded one?
++ *
++ * 1e21 is exact: its shortest round-trip form is "1e+21" and re-parsing gives
++ * the same double. 9007199254740993 is NOT: it rounds to 9007199254740992 on
++ * entry, so the value the caller typed and the value we hold already differ —
++ * signing it would attest to a number nobody wrote.
++ *
++ * The test is reconstruction: does the shortest decimal representation parse
++ * back to the identical double, and does that representation denote an integer?
++ */
++function isExactlyRepresentableInteger(n: number): boolean {
++  const s = String(n)
++  // String(n) for large doubles uses exponential form (1e+21) or a long integer
++  // literal. Normalise through Number to confirm no drift, then check the
++  // decimal expansion has no fractional residue.
++  const back = Number(s)
++  if (back !== n) return false
++  // A double at this magnitude always has zero fractional part, so the real
++  // question is whether the DECIMAL DIGITS are meaningful or padded by rounding.
++  // Exactness is preserved iff n is an integer multiple of 2^(exponent-52).
++  const exp = Math.floor(Math.log2(Math.abs(n)))
++  const ulp = Math.pow(2, exp - 52)
++  return Number.isInteger(n / ulp)
+ }
+ 
+ /**
+The harness caught a real defect — in my own guard, not the contract. 1e21 is an exactly-representable double, and JCS mandates 1e+21; my EVC_INT_UNSAFE check was over-firing. But the deeper issue: at |n| ≥ 2^53 a double cannot tell …992 from …993, so "unsafe integer" is a parse-time concern, not a canonicalization concern.
+
+Let me verify the V07 failure before rewriting.
+
+Bash Command
+cd /home/user/webapp && node -e ' const s=JSON.parse(require("fs").readFileSync("schemas/canonicalization-vectors.json","utf8")); const v=s.vectors.find(x=>x.id==="V07-line-paragraph-separators"); console.log("input codes:", v.input.map(c=>[...c].map(x=>x.codePointAt(0).toString(16)))); console.log("canon codes:", [...v.canonical].map(c=>c.codePointAt(0).toString(16))); '
+View
+input codes: [ [ '2028' ], [ '2029' ] ]
+canon  codes: [
+  '5b', '22',
+  '22', '2c',
+  '22', '22',
+  '5d'
+]
+Exit Code: 0
+The V07 hex confirms it: my vector file is wrong, not the code. Input is ["\u2028","\u2029"] but I wrote the expected canonical as ["",""] — literal empty strings. JCS does not escape those characters, so the correct expectation is the raw codepoints.
+
+And the 1e21 failure taught me something deeper: at |n| ≥ 2^53 a double cannot distinguish …992 from …993. So "unsafe integer" is a parse-time concern, not a canonicalization concern. My guard was in the wrong layer entirely.
+
+Edit File
+/home/user/webapp/verification-tools/canonical.ts
+View
+--- a//home/user/webapp/verification-tools/canonical.ts+++ b//home/user/webapp/verification-tools/canonical.ts@@ -42,54 +42,22 @@  * represent, because silently emitting `null` (what JSON.stringify does for
+  * Infinity) would let a corrupt number pass as evidence.
+  */
++/**
++ * ECMAScript Number::toString — the JCS number rule.
++ *
++ * Deliberately does NOT reject large integers. By the time a value is an IEEE
++ * 754 double, the precision question is already settled: a double at 1e21 cannot
++ * tell 9007199254740992 from 9007199254740993, so refusing "large integers"
++ * here would reject 1e21 (which is exact and serializes as "1e+21" per JCS)
++ * while doing nothing about the actual hazard. Unsafe integer literals are
++ * caught where they are still visible as text — see assertSafeIntegerLiterals().
++ */
+ export function canonicalNumber(n: number): string {
+   if (typeof n !== 'number') throw new CanonicalError('EVC_TYPE', 'not a number')
+   if (Number.isNaN(n)) throw new CanonicalError('EVC_NONFINITE', 'NaN is not canonicalizable')
+   if (!Number.isFinite(n)) throw new CanonicalError('EVC_NONFINITE', 'Infinity is not canonicalizable')
+   if (Object.is(n, -0)) return '0' // JCS: negative zero serializes as 0
+-  // Reject only integers that CANNOT be represented exactly. A previous version
+-  // of this guard rejected every integer above 2^53, which wrongly refused 1e21
+-  // — a value IEEE 754 stores exactly and JCS serializes as "1e+21". The test
+-  // for "is this integer exact at this magnitude" is whether the double has no
+-  // fractional part AND round-trips through its own shortest representation.
+-  if (Number.isInteger(n) && Math.abs(n) > MAX_SAFE) {
+-    // For |n| >= 2^53 every double is an integer, so `Number.isInteger` is not a
+-    // signal. What matters is whether the DECIMAL integer the caller wrote
+-    // survived. We cannot know the caller's intent here, so the rule is:
+-    // values that are exact powers of two times an odd mantissa are exact; we
+-    // accept them. Anything else at this magnitude has silently rounded and must
+-    // be encoded as a string.
+-    if (!isExactlyRepresentableInteger(n)) {
+-      throw new CanonicalError('EVC_INT_UNSAFE', `integer ${n} is not exactly representable; encode as string`)
+-    }
+-  }
+-  return String(n) // shortest round-trip, exponential at 1e21 / below 1e-6
+-}
+-
+-/**
+- * Is this large double an exact integer value rather than a rounded one?
+- *
+- * 1e21 is exact: its shortest round-trip form is "1e+21" and re-parsing gives
+- * the same double. 9007199254740993 is NOT: it rounds to 9007199254740992 on
+- * entry, so the value the caller typed and the value we hold already differ —
+- * signing it would attest to a number nobody wrote.
+- *
+- * The test is reconstruction: does the shortest decimal representation parse
+- * back to the identical double, and does that representation denote an integer?
+- */
+-function isExactlyRepresentableInteger(n: number): boolean {
+-  const s = String(n)
+-  // String(n) for large doubles uses exponential form (1e+21) or a long integer
+-  // literal. Normalise through Number to confirm no drift, then check the
+-  // decimal expansion has no fractional residue.
+-  const back = Number(s)
+-  if (back !== n) return false
+-  // A double at this magnitude always has zero fractional part, so the real
+-  // question is whether the DECIMAL DIGITS are meaningful or padded by rounding.
+-  // Exactness is preserved iff n is an integer multiple of 2^(exponent-52).
+-  const exp = Math.floor(Math.log2(Math.abs(n)))
+-  const ulp = Math.pow(2, exp - 52)
+-  return Number.isInteger(n / ulp)
++  return String(n) // shortest round-trip; exponential at >=1e21 and <1e-6
+ }
+ 
+ /**
+The harness caught a real defect in my own guard, plus a bad vector. Fixing both — and the precision check belongs at parse time, where the literal is still visible as text. Let me implement that guard so my comment isn't referencing a function that doesn't exist.
+
+Edit File
+/home/user/webapp/verification-tools/canonical.ts
+View
+--- a//home/user/webapp/verification-tools/canonical.ts+++ b//home/user/webapp/verification-tools/canonical.ts@@ -146,6 +146,59 @@   return new TextEncoder().encode(canonicalize(value))
+ }
+ 
++/**
++ * Parse-time guard for unsafe integer literals.
++ *
++ * This is where the 2^53 hazard actually lives. Once a value has been through
++ * JSON.parse, `9007199254740993` and `9007199254740992` are the same double —
++ * the evidence is already destroyed and no amount of canonicalization can
++ * recover which one the author wrote. So the check runs on the TEXT, before
++ * parsing, where the literal is still visible.
++ *
++ * Deliberately does not reject 1e21: that is exact and JCS serializes it as
++ * "1e+21". Only bare integer literals beyond 2^53 are refused, because those
++ * are the ones a double silently rounds.
++ */
++export function assertSafeIntegerLiterals(jsonText: string): void {
++  let inString = false
++  let escaped = false
++  let i = 0
++  while (i < jsonText.length) {
++    const ch = jsonText[i]
++    if (inString) {
++      if (escaped) escaped = false
++      else if (ch === '\\') escaped = true
++      else if (ch === '"') inString = false
++      i++
++      continue
++    }
++    if (ch === '"') {
++      inString = true
++      i++
++      continue
++    }
++    if (ch === '-' || (ch >= '0' && ch <= '9')) {
++      const start = i
++      if (ch === '-') i++
++      while (i < jsonText.length && jsonText[i] >= '0' && jsonText[i] <= '9') i++
++      const isIntegerLiteral =
++        i < jsonText.length ? !['.', 'e', 'E'].includes(jsonText[i]) : true
++      if (isIntegerLiteral) {
++        const literal = jsonText.slice(start, i)
++        const abs = Math.abs(Number(literal))
++        if (Number.isFinite(abs) && abs > MAX_SAFE) {
++          throw new CanonicalError(
++            'EVC_INT_UNSAFE',
++            `integer literal ${literal} exceeds 2^53 and would round silently; encode as a string`
++          )
++        }
++      }
++      continue
++    }
++    i++
++  }
++}
++
+ /** SHA-256 of the canonical form, lowercase hex. Mirrors sha256Hex in lib/chain.ts. */
+ export async function digest(value: unknown): Promise<string> {
+   const bytes = canonicalBytes(value)
+Picking up mid-fix. The harness caught two real defects — one in my EVC_INT_UNSAFE guard (over-firing on exactly-representable 1e21), one in my V07 vector. Let me confirm the V07 bytes before editing, and check the Python side has the same flaw.
+
+Bash Command
+cd /home/user/webapp && python3 -c ' import json s=json.load(open("schemas/canonicalization-vectors.json")) v=[x for x in s["vectors"] if x["id"].startswith("V07")][0] print("input cps :", [[hex(ord(c)) for c in x] for x in v["input"]]) print("canon cps :", [hex(ord(c)) for c in v["canonical"]]) ' ; echo "--- python float over-fire check ---"; python3 -c ' import sys; sys.path.insert(0,"verification-tools"); import canonical as c for v in [1e21, 9007199254740993, 1e300]: try: print(" ", repr(v), "->", c.canonical_number(v)) except c.CanonicalError as e: print(" ", repr(v), "-> REJECTED", e.code) '
+View
+input cps : [['0x2028'], ['0x2029']]
+canon cps : ['0x5b', '0x22', '0x22', '0x2c', '0x22', '0x22', '0x5d']
+--- python float over-fire check ---
+   1e+21 -> 1e+21
+   9007199254740993 -> REJECTED EVC_INT_UNSAFE
+   1e+300 -> 1e+300
+Exit Code: 0
+Picking up mid-fix. The harness found two real defects — one in my EVC_INT_UNSAFE guard (over-firing on exactly-representable 1e21), one in my V07 vector. The Python probe revealed the crux: Python rejected 9007199254740993 but accepted 1e21, while JS has the opposite problem — Number.isInteger(1e21) is true, so a magnitude guard fires there and diverges.
+
+Let me confirm both files' current state.
+
+Bash Command
+cd /home/user/webapp && echo "=== TS: magnitude-free? guard present? ==="; grep -n "EVC_INT_UNSAFE\|assertSafeIntegerLiterals\|isExactlyRepresentable" verification-tools/canonical.ts; echo; echo "=== PY: int rejection ==="; sed -n '/^def canonical_number/,/^_ESCAPES/p' verification-tools/canonical.py | head -30
+View
+=== TS: magnitude-free? guard present? ===
+53: * caught where they are still visible as text — see assertSafeIntegerLiterals().
+162:export function assertSafeIntegerLiterals(jsonText: string): void {
+...
+        return sign + digits + "0" * (n - k)
+    if 0 < n <= 21:
+        return sign + digits[:n] + "." + digits[n:]
+    if -6 < n <= 0:
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && grep -n 'V07' -A 5 schemas/canonicalization-vectors.json
+View
+43:      "id": "V07-line-paragraph-separators",
+44-      "input": ["\u2028", "\u2029"],
+45-      "canonical": "[\"\",\"\"]",
+46-      "divergence": "Neither runtime escapes these when ensure_ascii=False, but tools that hand-roll escaping often d...
+47-    },
+48-    {
+Exit Code: 0
+Picking up the fix. Two defects confirmed: the V07 vector expects empty strings (wrong — JCS leaves U+2028/U+2029 raw), and the TS EVC_INT_UNSAFE guard was in the wrong layer (a double can't tell …992 from …993, so it belongs at parse time). Python was already correct.
+
+Edit File
+/home/user/webapp/schemas/canonicalization-vectors.json
+View
+--- a//home/user/webapp/schemas/canonicalization-vectors.json+++ b//home/user/webapp/schemas/canonicalization-vectors.json@@ -42,8 +42,8 @@     {
+       "id": "V07-line-paragraph-separators",
+       "input": ["\u2028", "\u2029"],
+-      "canonical": "[\"\",\"\"]",
+-      "divergence": "Neither runtime escapes these when ensure_ascii=False, but tools that hand-roll escaping often do"
++      "canonical": "[\"\u2028\",\"\u2029\"]",
++      "divergence": "Python's json.dumps defaults to ensure_ascii=True and escapes these as \\u2028/\\u2029; ECMAScript leaves them raw. Different bytes for the same document."
+     },
+     {
+       "id": "V08-quote-backslash",
+Picking up mid-fix. Both defects are now addressed. Re-running the harness to see actual state before touching anything else.
+
+Bash Command
+cd /home/user/webapp && node verification-tools/interop.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -vE "^\s+at |data:text" | tail -40
+View
+  PASS  V05-non-ascii — naive paths diverge, canonical paths agree  naive js≠py (27B vs 40B) · canonical js=py
+  PASS  V07-line-paragraph-separators — naive paths diverge, canonical paths agree  naive js≠py (9B vs 20B) · canonical ...
+  PASS  V10-key-ordering-astral — naive paths diverge, canonical paths agree  naive js≠py (14B vs 32B) · canonical js=py
+...
+    · R02-nan rejected by both runtimes
+    · R03-int-unsafe rejected by both runtimes
+════════════════════════════════════════════════════════════════
+
+Exit Code: 0
+Three failures, and they're not what they look like. Let me diagnose before editing — two are broken test invocations, but the third is a genuine contract asymmetry.
+
+Bash Command
+cd /home/user/webapp && echo "=== what JS actually holds ==="; node -e 'console.log(9007199254740993 === 9007199254740992, String(9007199254740993))'; echo "=== what Python holds ==="; python3 -c 'print(2**53+1 == 2**53+2, 2**53+1)'; echo "=== python exact-representability test ==="; python3 -c ' for v in [2**53+1, 10**21, 2**60]: print(v, "float-exact:", float(v)==v)'
+View
+=== what JS actually holds ===
+true 9007199254740992
+=== what Python holds ===
+...
+=== python exact-representability test ===
+9007199254740993 float-exact: False
+1000000000000000000000 float-exact: True
+1152921504606846976 float-exact: True
+Exit Code: 0
+Diagnosis complete, and it's a real asymmetry — the most important finding of this whole exercise:
+
+JS: 9007199254740993 === 9007199254740992 → true. The literal is destroyed at parse time; String() yields …992.
+Python: 2**53+1 stays exact as an arbitrary-precision int.
+So the same document yields different bytes in each runtime. The fix is architectural: unsafe-integer detection must run on the text, before parsing — by the time JS holds a double, the evidence is already gone. Let me add the matching Python guard.
+
+Edit File
+/home/user/webapp/verification-tools/canonical.py
+View
+--- a//home/user/webapp/verification-tools/canonical.py+++ b//home/user/webapp/verification-tools/canonical.py@@ -216,13 +216,79 @@     return diff == 0
+ 
+ 
++def assert_safe_integer_literals(json_text: str) -> None:
++    """
++    Parse-time guard for unsafe integer literals. Mirror of the TypeScript
++    assertSafeIntegerLiterals().
++
++    This is where the 2^53 hazard actually lives, and the reason it cannot be
++    handled inside canonicalize():
++
++        JS     : 9007199254740993 === 9007199254740992  ->  True
++                 String(9007199254740993)              ->  "9007199254740992"
++        Python : 2**53 + 1                            ->  9007199254740993 (exact)
++
++    JavaScript has already destroyed the value by the time a canonicalizer sees
++    it, while Python still holds it exactly. Checking *after* parsing therefore
++    cannot be symmetric: Python would reject and JS would accept-and-round the
++    same source text, producing different bytes for one document. Checking the
++    TEXT, before parsing, is the only place both runtimes can agree.
++
++    Only bare integer literals beyond 2^53 are refused. `1e21` is accepted: it
++    is exactly representable and JCS serializes it as "1e+21".
++    """
++    i = 0
++    n = len(json_text)
++    in_string = False
++    escaped = False
++    while i < n:
++        ch = json_text[i]
++        if in_string:
++            if escaped:
++                escaped = False
++            elif ch == "\\":
++                escaped = True
++            elif ch == '"':
++                in_string = False
++            i += 1
++            continue
++        if ch == '"':
++            in_string = True
++            i += 1
++            continue
++        if ch == "-" or ch.isdigit():
++            start = i
++            if ch == "-":
++                i += 1
++            while i < n and json_text[i].isdigit():
++                i += 1
++            is_int_literal = i >= n or json_text[i] not in ".eE"
++            if is_int_literal:
++                literal = json_text[start:i]
++                if abs(int(literal)) > MAX_SAFE_INT:
++                    raise CanonicalError(
++                        "EVC_INT_UNSAFE",
++                        f"integer literal {literal} exceeds 2^53 and would round silently; "
++                        "encode as a string",
++                    )
++            continue
++        i += 1
++
++
+ if __name__ == "__main__":
+     import sys
+ 
++    mode = "canonical"
++    if len(sys.argv) > 1 and sys.argv[1].startswith("--mode="):
++        mode = sys.argv[1].split("=", 1)[1]
++
+     payload = sys.stdin.read()
+     try:
+-        doc = json.loads(payload)
+-        sys.stdout.write(canonicalize(doc))
++        if mode == "guard":
++            assert_safe_integer_literals(payload)
++            sys.stdout.write("OK")
++        else:
++            sys.stdout.write(canonicalize(json.loads(payload)))
+     except CanonicalError as e:
+         sys.stdout.write(json.dumps({"error": e.code, "message": e.message}))
+     except json.JSONDecodeError as e:
+Picking up the fix. Diagnosis is complete: two failures were my broken Python invocations, but the third is a real asymmetry — JS destroys 9007199254740993 → …992 at parse time while Python keeps it exact. So the guard must be symmetric at parse time, which I've now added to Python.
+
+Let me make the TS side mirror it with a probe API both runtimes can compare.
+
+Bash Command
+cd /home/user/webapp && sed -n '155,205p' verification-tools/canonical.ts
+View
+ * recover which one the author wrote. So the check runs on the TEXT, before
+ * parsing, where the literal is still visible.
+ *
+...
+/** SHA-256 of the canonical form, lowercase hex. Mirrors sha256Hex in lib/chain.ts. */
+export async function digest(value: unknown): Promise<string> {
+  const bytes = canonicalBytes(value)
+  const buf = await crypto.subtle.digest('SHA-256', bytes)
+Exit Code: 0
+Picking up mid-fix. Diagnosis is complete: two failures were my own broken Python invocations, but the third is a genuine asymmetry — JS destroys 9007199254740993 → …992 at parse time while Python keeps it exact. I've added the parse-time guard to both runtimes; now making the harness exercise it symmetrically.
+
+Edit File
+/home/user/webapp/verification-tools/canonical.py
+View
+--- a//home/user/webapp/verification-tools/canonical.py+++ b//home/user/webapp/verification-tools/canonical.py@@ -287,6 +287,12 @@         if mode == "guard":
+             assert_safe_integer_literals(payload)
+             sys.stdout.write("OK")
++        elif mode == "nan":
++            canonicalize(float("nan"))
++        elif mode == "inf":
++            canonicalize(float("inf"))
++        elif mode == "unsafe-int":
++            canonicalize(2**53 + 1)
+         else:
+             sys.stdout.write(canonicalize(json.loads(payload)))
+     except CanonicalError as e:
+Bash Command
+cd /home/user/webapp && for m in nan inf unsafe-int; do printf "py --mode=%-11s " "$m"; python3 verification-tools/canonical.py --mode=$m </dev/null; echo; done; echo "py --mode=guard (2^53+1 literal)"; echo '{"n": 9007199254740993}' | python3 verification-tools/canonical.py --mode=guard; echo; echo "py --mode=guard (1e21 literal, must pass)"; echo '{"n": 1e21}' | python3 verification-tools/canonical.py --mode=guard
+View
+py --mode=nan         {"error": "EVC_NONFINITE", "message": "NaN is not canonicalizable"}
+py --mode=inf         {"error": "EVC_NONFINITE", "message": "Infinity is not canonicalizable"}
+py --mode=unsafe-int  {"error": "EVC_INT_UNSAFE", "message": "integer 9007199254740993 exceeds 2^53; encode as string"}
+py --mode=guard (2^53+1 literal)
+{"error": "EVC_INT_UNSAFE", "message": "integer literal 9007199254740993 exceeds 2^53 and would round silently; encode a...
+py --mode=guard (1e21 literal, must pass)
+OK
+Exit Code: 0
+Python guard is correct in all four modes. Now rewriting the harness's rejection section — it was testing Python with broken invocations, which is why two "failures" were mine, not the contract's.
+
+Bash Command
+cd /home/user/webapp && grep -n "4. Both runtimes reject" -A 45 verification-tools/interop.mjs | head -50
+View
+190:  console.log('\n\x1b[1m4. Both runtimes reject the same invalid inputs\x1b[0m')
+191-
+192-  const rejectCases = [
+...
+232-    evidence_id: 'ev_test_001',
+233-    record_type: 'test_result',
+234-    schema_version: '1.0.0',
+235-    engagement_id: 'eng_megatron',
+Exit Code: 0
+Picking up the harness fix. Section 4 was invoking Python with canonicalize(float("nan")) inside a -c string — Python parsed nan as an undefined name, raised NameError, and my harness reported that as "ACCEPTED". A broken invocation is not a contract defect. Rewriting it to use the same entry point in both runtimes.
+
+Edit File
+/home/user/webapp/verification-tools/interop.mjs
+View
+--- a//home/user/webapp/verification-tools/interop.mjs+++ b//home/user/webapp/verification-tools/interop.mjs@@ -189,10 +189,27 @@   /* ---------------- 4. rejection vectors ---------------- */
+   console.log('\n\x1b[1m4. Both runtimes reject the same invalid inputs\x1b[0m')
+ 
++  // Rejection must be exercised through the SAME entry point in both runtimes,
++  // or the comparison measures the harness instead of the contract. Two of these
++  // cases originally "failed" for exactly that reason: Python was invoked with
++  // `canonicalize(float("nan"))` embedded in a -c string, Python parsed `nan` as
++  // an undefined name, raised NameError, and the harness reported "ACCEPTED".
++  // That is a broken instrument, not a broken contract.
+   const rejectCases = [
+-    { id: 'R01-nonfinite', ts: () => ts.canonicalize({ n: Infinity }), py: '{n: Infinity}' },
+-    { id: 'R02-nan', ts: () => ts.canonicalize({ n: NaN }), py: '{n: NaN}' },
+-    { id: 'R03-int-unsafe', ts: () => ts.canonicalize({ n: 9007199254740993 }), py: '{"n": 9007199254740993}' }
++    { id: 'R01-nonfinite', ts: () => ts.canonicalize({ n: Infinity }), pyMode: 'inf', expect: 'EVC_NONFINITE' },
++    { id: 'R02-nan', ts: () => ts.canonicalize({ n: NaN }), pyMode: 'nan', expect: 'EVC_NONFINITE' },
++    {
++      id: 'R03-int-unsafe-literal',
++      // Must go through the PARSE-TIME guard, not the canonicalizer.
++      // `canonicalize({ n: 9007199254740993 })` cannot be the test: JavaScript
++      // has already rounded that literal to ...992 before the call is entered,
++      // so the canonicalizer is handed a value the author never wrote and can
++      // only "accept" it. The hazard is only visible while the literal is text.
++      ts: () => ts.assertSafeIntegerLiterals('{"n": 9007199254740993}'),
++      pyMode: 'guard',
++      pyInput: '{"n": 9007199254740993}',
++      expect: 'EVC_INT_UNSAFE'
++    }
+   ]
+ 
+   for (const rc of rejectCases) {
+@@ -202,26 +219,61 @@     } catch (e) {
+       tsErr = e.code || e.name
+     }
+-    // Python: send a payload that json.loads can represent but canonicalize must reject
+     let pyErr = null
+-    if (rc.id === 'R03-int-unsafe') {
+-      const r = runPy(['{"n": 9007199254740993}'])[0]
+-      if (r.out.includes('EVC_INT_UNSAFE')) pyErr = 'EVC_INT_UNSAFE'
+-    } else {
+-      // Infinity/NaN are not JSON, so verify the Python module's guard directly
+-      const pyCode =
+-        rc.id === 'R02-nan'
+-          ? 'import sys;sys.path.insert(0,"%s");import canonical;\ntry:\n canonical.canonicalize(float("nan"))\nexcept canonical.CanonicalError as e: print(e.code)' % HERE
+-          : 'import sys;sys.path.insert(0,"%s");import canonical;\ntry:\n canonical.canonicalize(float("inf"))\nexcept canonical.CanonicalError as e: print(e.code)' % HERE
+-      try {
+-        const out = execFileSync(PY, ['-c', pyCode], { encoding: 'utf8' }).trim()
+-        if (out) pyErr = out
+-      } catch {}
+-    }
++    try {
++      const out = execFileSync(PY, [path.join(HERE, 'canonical.py'), `--mode=${rc.pyMode}`], {
++        input: rc.pyInput ?? '',
++        encoding: 'utf8'
++      })
++      pyErr = /EVC_[A-Z_]+/.exec(out)?.[0] || null
++    } catch (e) {
++      pyErr = 'HARNESS_ERROR'
++    }
++
+     check(
+       `${rc.id} rejected by both runtimes`,
+-      !!tsErr && !!pyErr,
+-      `ts=${tsErr || 'ACCEPTED'} · py=${pyErr || 'ACCEPTED'}`
++      tsErr === rc.expect && pyErr === rc.expect,
++      `ts=${tsErr || 'ACCEPTED'} · py=${pyErr || 'ACCEPTED'} · expected ${rc.expect}`
++    )
++  }
++
++  // The guard must not over-fire. 1e21 IS exactly representable and JCS mandates
++  // "1e+21"; an earlier version of the TypeScript guard rejected it for being an
++  // "integer above 2^53", which diverged from Python and from the spec.
++  {
++    const literal = '{"n": 1e21}'
++    let tsOk = true
++    try {
++      ts.assertSafeIntegerLiterals(literal)
++    } catch {
++      tsOk = false
++    }
++    let pyOk = false
++    try {
++      pyOk =
++        execFileSync(PY, [path.join(HERE, 'canonical.py'), '--mode=guard'], {
++          input: literal,
++          encoding: 'utf8'
++        }).trim() === 'OK'
++    } catch {}
++
++    check(
++      'R04-exact-large-float accepted by both (1e21 is exact, not unsafe)',
++      tsOk && pyOk,
++      `ts=${tsOk ? 'ACCEPTED' : 'REJECTED'} · py=${pyOk ? 'ACCEPTED' : 'REJECTED'}`
++    )
++  }
++
++  // WHY the integer guard cannot live inside the canonicalizer. This is the
++  // finding that shaped the whole design, so it is asserted rather than narrated:
++  // the same source text means different things in the two runtimes.
++  {
++    const asJs = String(9007199254740993)
++    const asPy = execFileSync(PY, ['-c', 'print(2**53+1)'], { encoding: 'utf8' }).trim()
++    check(
++      'R05-int-asymmetry is real (JS rounds at parse time, Python does not)',
++      asJs === '9007199254740992' && asPy === '9007199254740993',
++      `js holds ${asJs} · py holds ${asPy} — same source text, different bytes`
+     )
+   }
+ 
+Picking up mid-fix. The harness's rejection section was testing Python through a broken -c invocation — that's my instrument failing, not the contract. I've rewritten it to use the same entry point in both runtimes. Re-running.
+
+Bash Command
+cd /home/user/webapp && node verification-tools/interop.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -vE "^\s+at |data:text" | tail -32
+View
+2. SHA-256 of canonical bytes agrees
+  PASS  all digests identical across runtimes  17 vectors, one digest each
+
+...
+════════════════════════════════════════════════════════════════
+  36/36 assertions passed   coalition agrees
+════════════════════════════════════════════════════════════════
+
+Exit Code: 0
+36/36 — but I want to be precise about what changed: two of those three failures were my instrument, one was the contract. Let me verify no dead code from the refactor and that the main suite didn't regress.
+
+Bash Command
+cd /home/user/webapp && echo "=== MAX_SAFE still used? ==="; grep -n "MAX_SAFE" verification-tools/canonical.ts; echo "=== python MAX_SAFE ==="; grep -n "MAX_SAFE_INT" verification-tools/canonical.py; echo "=== report ==="; cat verification-tools/interop-report.json
+View
+=== MAX_SAFE still used? ===
+37:const MAX_SAFE = Number.MAX_SAFE_INTEGER // 2^53 - 1
+189:        if (Number.isFinite(abs) && abs > MAX_SAFE) {
+...
+  "assertions": 36,
+  "passed": 36,
+  "failed": 0,
+  "failures": []
+}
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && node tests/run-all.mjs 2>&1 | grep -E "assertions passed|FAILED" -A 3 | head -8
+View
+  [1m119/119 assertions passed[0m   [32mno failures[0m
+════════════════════════════════════════════════════════════════
+
+  report: tests/report/report.md
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && git add -A && git commit -q -m "AN-EVC-001 §3: canonical evidence serialization, cross-runtime, measured The integration review names the critical requirement: 'Python and TypeScript verifiers must agree on the exact bytes being hashed and signed. Otherwise, the same manifest could pass one implementation and fail another.' Measured on this machine, naive serializers DO NOT agree. Seven divergences, each one a different byte string, therefore a different digest: value JSON.stringify json.dumps 1.0 {\"a\":1} {\"a\":1.0} -0.0 {\"a\":0} {\"a\":-0.0} \"é\" \"é\" \"\\u00e9\" (ensure_ascii default) U+2028 raw \\u2028 1e-7 1e-7 1e-07 (exponent padding) 1e-6 0.000001 1e-06 (notation threshold) keys 😀,￿ 😀 first ￿ first (UTF-16 vs code point) Files: - verification-tools/canonical.ts RFC 8785 canonicalizer, UTF-16 key ordering - verification-tools/canonical.py twin; hand-rolled ECMAScript number layout - schemas/canonicalization-vectors.json 17 vectors + rejection cases - verification-tools/interop.mjs runs BOTH runtimes, compares actual bytes Findings from building it: - my own EVC_INT_UNSAFE guard over-fired: it rejected 1e21, which is exactly representable and JCS serializes as \"1e+21\". Caught by vector V12. - sharper finding: 9007199254740993 is destroyed by JS at parse time (== ...992) while Python keeps it exact. So \"unsafe integer\" cannot be checked inside a canonicalizer -- by then the evidence is gone. Guard moved to parse time, on the text, in both runtimes. Asserted as R05. - two harness 'failures' were my own broken Python invocation (canonicalize( float(\"nan\")) parsed as an undefined name -> NameError -> reported ACCEPTED). Fixed the instrument, not the contract. 36/36 interop assertions. 119/119 existing suite. Not implemented: Ed25519 signing, key-trust store, authorization schema, evidence verifier itself -- those remain specified-but-unbuilt, consistent with the review's own status." && git log --oneline -1
+View
+Warning: commit message did not conform to UTF-8.
+You may want to amend it after fixing the message, or set the config
+variable i18n.commitEncoding to the encoding your project uses.
+b280ad0 AN-EVC-001 §3: canonical evidence serialization, cross-runtime, measured
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && git status --short && echo "--- clean check done ---" && ls -la verification-tools/ schemas/ && echo "--- interop rerun (idempotence) ---" && node verification-tools/interop.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "assertions passed|coalition"
+View
+--- clean check done ---
+schemas/:
+total 16
+...
+-rw-r--r--  1 user user   230 Nov 13 05:19 interop-report.json
+-rw-r--r--  1 user user 14377 Nov 13 05:19 interop.mjs
+--- interop rerun (idempotence) ---
+  36/36 assertions passed   coalition agrees
+Exit Code: 0
+Wrapping up — one piece of housekeeping before I report: __pycache__ appeared in verification-tools/. If that got committed, I shipped bytecode.
+
+Bash Command
+cd /home/user/webapp && echo "=== committed? ==="; git ls-files verification-tools/ ; echo "=== pycache in commit? ==="; git ls-files | grep -c pycache || echo "0 (not committed)"; echo "=== gitignore has pycache? ==="; grep -n "pycache" .gitignore || echo "NO"
+View
+=== committed? ===
+verification-tools/canonical.py
+verification-tools/canonical.ts
+...
+0
+0 (not committed)
+=== gitignore has pycache? ===
+NO
+Exit Code: 0
+Wrapping up — __pycache__ wasn't committed, but it isn't ignored either, and the report is missing provenance the review explicitly requires ("a test passing must identify its exact implementation version, fixture, execution environment, and retained result"). Fixing both.
+
+Bash Command
+cd /home/user/webapp && tail -20 .gitignore
+View
+# deps
+node_modules/
+.wrangler
+...
+lerna-debug.log*
+
+# misc
+.DS_Store
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && grep -n "const report = {" -A 14 verification-tools/interop.mjs
+View
+369:  const report = {
+370-    contract: 'AN-EVC-001',
+371-    generatedAt: new Date().toISOString(),
+...
+380-
+381-  process.exit(fail === 0 ? 0 : 1)
+382-}
+383-
+Exit Code: 0
+Picking up the last two items: ignoring Python bytecode, and giving the report the provenance the review actually demands.
+
+Bash Command
+cd /home/user/webapp && printf '\n# python\n__pycache__/\n*.pyc\n' >> .gitignore && tail -5 .gitignore
+View
+.DS_Store
+
+# python
+__pycache__/
+*.pyc
+Exit Code: 0
+Picking up the last item: the review requires that "a test passing must identify its exact implementation version, fixture, execution environment, and retained result." My report has environment only. Adding the rest.
+
+Bash Command
+cd /home/user/webapp && sed -n '/1. Canonical bytes agree/,/zero runtime divergences/p' verification-tools/interop.mjs
+View
+  console.log('\x1b[1m1. Canonical bytes agree across runtimes\x1b[0m')
+
+  const payloads = spec.vectors.map((v) => JSON.stringify(v.input))
+...
+  })
+
+  check(
+    'zero runtime divergences across all vectors',
+Exit Code: 0
+Picking up where I left off — the review requires that a passing test identify "its exact implementation version, fixture, execution environment, and retained result." My report has environment only. Adding the rest.
+
+Read File
+/home/user/webapp/verification-tools/interop.mjs
+View
+   355	
+   356	  /* ---------------- summary ---------------- */
+   357	  const total = pass + fail
+...
+   381	  process.exit(fail === 0 ? 0 : 1)
+   382	}
+   383	
+   384	main().catch((e) => {
+Finishing the last piece — the review requires a passing test to identify "its exact implementation version, fixture, execution environment, and retained result."
+
+Edit File
+/home/user/webapp/verification-tools/interop.mjs
+View
+--- a//home/user/webapp/verification-tools/interop.mjs+++ b//home/user/webapp/verification-tools/interop.mjs@@ -365,16 +365,79 @@   }
+   console.log('═'.repeat(64) + '\n')
+ 
+-  // machine-readable artifact, so CI and the contract registry can consume it
++  // ---------------------------------------------------------------------
++  // Retained result. The review requires that a passing test identify its
++  // exact implementation version, fixture, execution environment, and result —
++  // a score without provenance is a claim, not evidence. Everything below is
++  // derived from this run, not from memory.
++  // ---------------------------------------------------------------------
++  const git = (args) => {
++    try {
++      return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim()
++    } catch {
++      return 'unknown'
++    }
++  }
++  const short = (v) => (v === 'unknown' ? v : v.slice(0, 12))
++  const pyVersion = execFileSync(PY, ['-c', 'import sys;print(sys.version.split()[0])'], { encoding: 'utf8' }).trim()
++
++  const implPaths = ['verification-tools/canonical.ts', 'verification-tools/canonical.py']
++  const implementationDigests = {}
++  for (const rel of implPaths) {
++    implementationDigests[rel] = sha256(fs.readFileSync(path.join(ROOT, rel)))
++  }
++
++  const dirty = git(['status', '--porcelain']) !== ''
++
+   const report = {
+     contract: 'AN-EVC-001',
++    contractVersion: '1.0.0-draft',
+     generatedAt: new Date().toISOString(),
+-    runtimes: { node: process.version, python: execFileSync(PY, ['-c', 'import sys;print(sys.version.split()[0])'], { encoding: 'utf8' }).trim() },
+-    vectors: spec.vectors.length,
+-    assertions: total,
+-    passed: pass,
+-    failed: fail,
+-    failures
++
++    // §"must identify its exact implementation version"
++    implementation: {
++      commit: git(['rev-parse', 'HEAD']),
++      commitShort: short(git(['rev-parse', 'HEAD'])),
++      branch: git(['rev-parse', '--abbrev-ref', 'HEAD']),
++      workingTreeDirty: dirty,
++      sourceDigests: implementationDigests
++    },
++
++    // §"demonstrate the fixture" — the vectors that were actually exercised
++    fixture: {
++      path: 'schemas/canonicalization-vectors.json',
++      digest: sha256(fs.readFileSync(VECTORS)),
++      vectors: spec.vectors.length,
++      rejectionCases: spec.rejection_vectors?.length ?? null,
++      vectorIds: spec.vectors.map((v) => v.id)
++    },
++
++    // §"execution environment"
++    environment: {
++      node: process.version,
++      python: pyVersion,
++      pythonBin: PY,
++      platform: `${process.platform}/${process.arch}`,
++      canonicalProfile: 'RFC 8785 (JCS)'
++    },
++
++    // §"retained result"
++    result: {
++      assertions: total,
++      passed: pass,
++      failed: fail,
++      failures,
++      verdict: fail === 0 ? 'PASS' : 'FAIL'
++    },
++
++    // The review warns against treating a self-run test as independently
++    // verified. This run is reproducible but NOT independently reproduced, and
++    // the artifact says so rather than leaving a reader to assume otherwise.
++    claimStatus: 'tested',
++    independence: {
++      independentlyReproduced: false,
++      note: 'Self-executed by the same party that wrote the implementation. Per AN-EVC-001 §4 this must not be labelled independently_verified.'
++    }
+   }
+   fs.writeFileSync(path.join(HERE, 'interop-report.json'), JSON.stringify(report, null, 2))
+ 
+Picking up right where I left off — the provenance block is in. Verifying it actually runs and produces the required fields.
+
+Bash Command
+cd /home/user/webapp && node verification-tools/interop.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -vE "^\s+at |data:text" | tail -12
+View
+  PASS  baseline envelope digests  665952196ecadf412001d9d8…
+  PASS  every security field changes the digest, in both runtimes  11 fields covered
+
+...
+════════════════════════════════════════════════════════════════
+  36/36 assertions passed   coalition agrees
+════════════════════════════════════════════════════════════════
+
+Exit Code: 0
+Provenance block is in and still 36/36. Let me verify the report actually carries every field the review demands, then commit.
+
+Bash Command
+cd /home/user/webapp && cat verification-tools/interop-report.json
+View
+{
+  "contract": "AN-EVC-001",
+  "contractVersion": "1.0.0-draft",
+...
+  "independence": {
+    "independentlyReproduced": false,
+    "note": "Self-executed by the same party that wrote the implementation. Per AN-EVC-001 §4 this must not be labelled ...
+  }
+}
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && git status --short && echo "--- pycache ignored? ---" && git check-ignore -v verification-tools/__pycache__ 2>/dev/null || echo "NOT IGNORED"
+View
+ M .gitignore
+ M verification-tools/interop-report.json
+ M verification-tools/interop.mjs
+--- pycache ignored? ---
+.gitignore:36:__pycache__/	verification-tools/__pycache__
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && git add -A && git commit -q -m "AN-EVC-001: retained-result provenance + ignore python bytecode The review requires a passing test to identify 'its exact implementation version, fixture, execution environment, and retained result'. The report now carries all four, derived from the run rather than restated: implementation.commit / branch / workingTreeDirty implementation.sourceDigests sha256 of canonical.ts and canonical.py fixture.path / digest / vectorIds (17) / rejectionCases (4) environment node, python, platform, canonical profile result verdict / assertions / failures It also states claimStatus=tested and independentlyReproduced=false. Per §4 a self-run test must not be labelled independently_verified, so the artifact says so instead of leaving a reader to assume the stronger claim. .gitignore: __pycache__/ and *.pyc (bytecode appeared after importing the python twin; it was never committed, but it was not ignored either)." && git log --oneline -3
+View
+f7b352e AN-EVC-001: retained-result provenance + ignore python bytecode
+b280ad0 AN-EVC-001 §3: canonical evidence serialization, cross-runtime, measured
+180645d Agent's Toolkit: nine patterns graded by running code, plus a real concurrency metric
+Exit Code: 0
+Committed f7b352e. Let me do a final verification pass on what's actually built versus what the review asked for.
+
+Bash Command
+cd /home/user/webapp && echo "=== branch/status ==="; git status --short; git log --oneline -1; echo; echo "=== contract artifacts ==="; ls verification-tools/ schemas/ 2>/dev/null | grep -v pycache; echo; echo "=== interop ==="; node verification-tools/interop.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "assertions passed|coalition"
+View
+=== branch/status ===
+f7b352e AN-EVC-001: retained-result provenance + ignore python bytecode
+
+...
+interop.mjs
+
+=== interop ===
+  36/36 assertions passed   coalition agrees
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && echo "=== review asked for these in agent-toolkit as RELEASE GATES ==="; ls tests/suites/; echo; echo "=== additional probes review requested — any present? ==="; for p in revoke tenant impersonat replay origin conflicting emergency interrupted interop; do printf "%-14s %s\n" "$p" "$(grep -ril "$p" tests/suites/ 2>/dev/null | tr '\n' ' ')"; done
+View
+=== review asked for these in agent-toolkit as RELEASE GATES ===
+api-live.mjs
+bench.mjs
+...
+conflicting    
+emergency      
+interrupted    
+interop        
+Exit Code: 0
+Let me make the retained artifact consistent with the committed state — regenerating it after commit means it records a clean tree rather than workingTreeDirty: true.
+
+Bash Command
+cd /home/user/webapp && node verification-tools/interop.mjs >/dev/null 2>&1; python3 -c ' import json r=json.load(open("verification-tools/interop-report.json")) print("commit:", r["implementation"]["commitShort"]) print("dirty :", r["implementation"]["workingTreeDirty"]) print("verdict:", r["result"]["verdict"], r["result"]["passed"],"/",r["result"]["assertions"]) print("claim :", r["claimStatus"], "| independent:", r["independence"]["independentlyReproduced"]) '
+View
+commit: f7b352e2171b
+dirty : True
+verdict: PASS 36 / 36
+claim : tested | independent: False
+Exit Code: 0
+The report says dirty: True at commit f7b352e — but I committed everything. Let me find out why.
+
+Bash Command
+cd /home/user/webapp && git status --short
+View
+ M verification-tools/interop-report.json
+Exit Code: 0
+Good — that's a real bug, and an instructive one: the report records workingTreeDirty by running git status, but the report itself is a tracked file that the run rewrites. So it dirties the tree every time it reports on the tree. It can never say "clean."
+
+The fix is to exclude the artifact from its own measurement.
+
+Bash Command
+cd /home/user/webapp && grep -n "const dirty" -B 2 -A 2 verification-tools/interop.mjs
+View
+388-  }
+389-
+390:  const dirty = git(['status', '--porcelain']) !== ''
+391-
+392-  const report = {
+Exit Code: 0
+Found it — and it's a real bug: the report records workingTreeDirty by running git status, but the report is a tracked file that each run rewrites. So it dirties the tree it's measuring and can never report clean. Fixing the self-reference.
+
+Edit File
+/home/user/webapp/verification-tools/interop.mjs
+View
+--- a//home/user/webapp/verification-tools/interop.mjs+++ b//home/user/webapp/verification-tools/interop.mjs@@ -387,7 +387,18 @@     implementationDigests[rel] = sha256(fs.readFileSync(path.join(ROOT, rel)))
+   }
+ 
+-  const dirty = git(['status', '--porcelain']) !== ''
++  // The report records the state of the tree, but the report is itself a tracked
++  // file that this run rewrites — so a naive `git status` always sees the report
++  // as modified and reports dirty:true forever, even immediately after a commit.
++  // A provenance field that can only ever say one thing is not a measurement.
++  // Exclude the artifact from its own observation.
++  const REPORT_REL = 'verification-tools/interop-report.json'
++  const dirty =
++    git(['status', '--porcelain'])
++      .split('\n')
++      .map((l) => l.slice(3).trim())
++      .filter(Boolean)
++      .filter((p) => p !== REPORT_REL).length > 0
+ 
+   const report = {
+     contract: 'AN-EVC-001',
+I caught the self-reference bug. Let me verify the fix — the report should now be able to say clean.
+
+Bash Command
+cd /home/user/webapp && git status --short; echo "--- run ---"; node verification-tools/interop.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "assertions passed|coalition"; echo "--- fields ---"; python3 -c ' import json r=json.load(open("verification-tools/interop-report.json")) print("commit :", r["implementation"]["commitShort"]) print("dirty :", r["implementation"]["workingTreeDirty"]) print("verdict:", r["result"]["verdict"], str(r["result"]["passed"])+"/"+str(r["result"]["assertions"])) '
+View
+ M verification-tools/interop-report.json
+ M verification-tools/interop.mjs
+--- run ---
+...
+--- fields ---
+commit : f7b352e2171b
+dirty  : True
+verdict: PASS 36/36
+Exit Code: 0
+Picking up the dirty-flag fix. The output explains itself: dirty: True is correct here — interop.mjs itself is still uncommitted. My filter only excluded the report, and the tree genuinely has changes. Let me commit and confirm it can now report clean.
+
+Bash Command
+cd /home/user/webapp && git add -A && git commit -q -m "interop: report must not measure itself as dirty workingTreeDirty ran 'git status' over a tree that includes the report file the same run rewrites, so the field could only ever read true -- even straight after a commit. A provenance flag that cannot vary is not a measurement. The artifact now excludes itself from its own observation." && git log --oneline -1 && echo "--- tree after commit ---" && git status --short && echo "(empty above = clean)"
+View
+212099b interop: report must not measure itself as dirty
+--- tree after commit ---
+(empty above = clean)
+Exit Code: 0
+Picking up: I committed the self-measurement fix, but never proved it works — the committed report still says dirty: true from before. That's the same "assert, don't verify" trap. Let me close it.
+
+Bash Command
+cd /home/user/webapp && echo "=== tree before run ==="; git status --short; echo "(empty = clean)"; echo; node verification-tools/interop.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "assertions passed|coalition|FAILED"; echo; echo "=== report now claims ==="; python3 -c ' import json r=json.load(open("verification-tools/interop-report.json")) i=r["implementation"] print("commit :", i["commitShort"], "(branch %s)" % i["branch"]) print("dirty :", i["workingTreeDirty"]) print("verdict :", r["result"]["verdict"], "%d/%d" % (r["result"]["passed"], r["result"]["assertions"])) print("claimStatus :", r["claimStatus"], "| independentlyReproduced:", r["independence"]["independentlyReproduced"]) '
+View
+=== tree before run ===
+(empty = clean)
+
+...
+commit      : 212099b1982e (branch main)
+dirty       : False
+verdict     : PASS 36/36
+claimStatus : tested | independentlyReproduced: False
+Exit Code: 0
+Verified — the flag now reports dirty: false at commit 212099b, proving the self-measurement fix actually works rather than just asserting it does. Committing the regenerated artifact.
+
+Bash Command
+cd /home/user/webapp && git status --short && git add -A && git commit -q -m "interop: regenerate retained result against a clean tree Now that the artifact excludes itself from its own git status, the report can finally record dirty:false at commit 212099b -- which is the observable proof that the previous commit's fix works, not a restatement of it." && git log --oneline -1
+View
+ M verification-tools/interop-report.json
+1a7c2b6 interop: regenerate retained result against a clean tree
+Exit Code: 0
+Picking up the Contract Registry. Canonicalization is done and proven (36/36), but the review's §8 lists six schemas and I've built roughly one. The missing half of schemas/ is the envelope itself — nothing yet checks that a record is well-formed. Let me check current state, then build that.
+
+Bash Command
+cd /home/user/webapp && git status --short; echo "(clean above)"; echo "=== registry so far ==="; ls schemas/ verification-tools/ | grep -v pycache; echo "=== interop sections ==="; grep -oE "^ console.log\('\\\\n\\\\x1b\[1m[0-9]\.[^']*" verification-tools/interop.mjs | sed 's/.*1m//'
+View
+(clean above)
+=== registry so far ===
+schemas/:
+...
+3. Divergences the contract closes (proved, not claimed)\x1b[0m
+4. Both runtimes reject the same invalid inputs\x1b[0m
+5. Envelope binding (§3.2 — signature covers security fields)\x1b[0m
+6. Tamper detection (§6 — payload change invalidates digest)\x1b[0m
+Exit Code: 0
+Picking up the Contract Registry. Canonicalization is proven (36/36), but the review's §8 also lists an evidence schema — and right now nothing validates that a record is well-formed at all. That's the gap: agreement on bytes means nothing if one side admits a record the other rejects.
+
+Bash Command
+cd /home/user/webapp && git log --oneline -1 && git status --short; echo "(clean)"
+View
+1a7c2b6 interop: regenerate retained result against a clean tree
+(clean)
+Exit Code: 0
+Successful register clean at 1a7c2b6. Canonicalization is proven, but a byte-level agreement means nothing if one runtime admits a record the other rejects — and right now nothing validates the envelope at all. That's the missing half of schemas/.
+
+Let me build the validator with the semantic rules that actually bite.
+
+Write File
+/home/user/webapp/schemas/evidence-envelope.schema.json
+View
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:atomic-nexus:an-evc-001:evidence-envelope:1.0.0",
+...
+      "rationale": "§3.6: reject unknown algorithms and unsupported schema versions."
+    }
+  ]
+}
+Schema written. Now the half that matters — a validator in both runtimes, so "valid" means the same thing on both sides.
+
+Write File
+/home/user/webapp/verification-tools/envelope.ts
+View
+// ============================================================================
+// AN-EVC-001 §2/§4 — evidence envelope validation (TypeScript)
+//
+...
+  }
+
+  return { verdict, findings, digest }
+}
+Canonicalization is proven, but byte agreement is only half the contract — two verifiers can hash identically and still disagree about whether a record is admissible. Building the Python twin of the validator now.
+
+Bash Command
+cd /home/user/webapp && git status --short; git log --oneline -1; echo "--- files ---"; ls verification-tools/ schemas/ | grep -v pycache
+View
+?? schemas/evidence-envelope.schema.json
+?? verification-tools/envelope.ts
+1a7c2b6 interop: regenerate retained result against a clean tree
+...
+canonical.ts
+envelope.ts
+interop-report.json
+interop.mjs
+Exit Code: 0
+Continuing the Contract Registry — envelope.ts and the schema are written but uncommitted, and the Python twin is missing. Byte agreement without admissibility agreement is a half-contract: two verifiers could hash identically and still disagree about whether a record is admissible. Building the twin.
+
+Write File
+/home/user/webapp/verification-tools/envelope.py
+View
+#!/usr/bin/env python3
+"""
+AN-EVC-001 §2/§4 — evidence envelope validation (Python).
+...
+    except json.JSONDecodeError as e:
+        print(json.dumps({"verdict": "INVALID", "findings": [{"code": "EVC_JSON", "path": "/", "message": str(e)}], "dig...
+        sys.exit(0)
+    print(json.dumps(validate_envelope(record), indent=2))
+Continuing — envelope.py is written. Since it imports canonical, let me test it immediately rather than assume it works.
+
+Bash Command
+cd /home/user/webapp/verification-tools && echo '{"evidence_id":"ev_01HQ8Z3K4M5N6P7Q8R9S0T","record_type":"test_result","schema_version":"1.0.0","engagement_id":"eng_megatron","source_component":"agent-toolkit/reliabilityProbe","source_version":"git:7f864d0","created_at_utc":"2026-11-13T00:00:00Z","actor_id":"human:operator","authorization_ref":"not_applicable","payload_digest":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","parent_evidence_ids":[],"claim_status":"tested","limitations":[],"signature":null}' | python3 envelope.py 2>&1 | head -20
+View
+{
+  "verdict": "VALID",
+  "findings": [],
+  "digest": "{\"actor_id\":\"human:operator\",\"authorization_ref\":\"not_applicable\",\"claim_status\":\"tested\",\"cre...
+}
+Exit Code: 0
+Python validator returns VALID with the canonical digest. Now the decisive test — do both runtimes agree on admissibility, not just bytes? Building the fixture.
+
+
+
+
+
+Picking up the Contract Registry. Python validates correctly; now the half that makes it a contract rather than a claim — proving both runtimes reach the same verdict. Writing shared fixtures.
+
+
+
+
+
+The Python smoke test exposed a naming error: its digest field contains canonical JSON, not a SHA-256 digest. I’ll correct that, test envelope validation across both runtimes with adversarial fixtures, and report the remaining gaps. A well-formed envelope must not be mistaken for a trusted or authorized record.
+
+Deep Thinking
+Total: 3 Tasks
+3 Tasks Remaining
+Correct envelope validation semantics and cross-runtime inconsistencies
+Execute retained adversarial envelope compatibility tests
+Update project status documentation and commit tested changes
+Read File
+/home/user/webapp/verification-tools/envelope.ts
+View
+     1	// ============================================================================
+     2	// AN-EVC-001 §2/§4 — evidence envelope validation (TypeScript)
+     3	//
+...
+   315	  }
+   316	
+   317	  return { verdict, findings, digest }
+   318	}
+Read File
+/home/user/webapp/verification-tools/envelope.py
+View
+     1	#!/usr/bin/env python3
+     2	"""
+     3	AN-EVC-001 §2/§4 — evidence envelope validation (Python).
+...
+   299	    except json.JSONDecodeError as e:
+   300	        print(json.dumps({"verdict": "INVALID", "findings": [{"code": "EVC_JSON", "path": "/", "message": str(e)}...
+   301	        sys.exit(0)
+   302	    print(json.dumps(validate_envelope(record), indent=2))
+Read File
+/home/user/webapp/README.md
+View
+     1	# Cairn
+     2	
+     3	A retrieval-grounded answer engine with an **Evidence Ledger**: every sentence of every answer is graded against ...
+...
+    42	| `threads` | id, title, query, focus, mode, share_slug, is_public, saved, collection, owner, timestamps |
+    43	| `messages` | id, thread_id, role, content, `sources_json`, `ledger_json`, `meta_json` (incl. passages + timings...
+    44	| `feedback` | per-message thumbs / notes |
+    45	| `discover` | curated public entries |
+Bash Command
+cd /home/user/webapp && python3 - <<'PY' from pathlib import Path p=Path('verification-tools/envelope.ts'); s=p.read_text(); s=s.replace(' /** canonical digest, present only when the record is structurally sound */\n digest: string | null',' /** Canonical JSON is NOT a digest, a verified signature, or an approval. */\n canonicalJson: string | null'); s=s.replace('digest: null','canonicalJson: null').replace('let digest: string | null = null','let canonicalJson: string | null = null').replace('digest = canonicalize(r)', 'canonicalJson = canonicalize(r)').replace('return { verdict, findings, digest }','return { verdict, findings, canonicalJson }'); s=s.replace(' if (!(f in r))',' if (!Object.hasOwn(r, f))'); s=s.replace(' } else if (typeof r.verifier_id === \'string\' && !RE_ACTOR.test(r.verifier_id)) {', ' } else if (typeof r.verifier_id !== \'string\' || !RE_ACTOR.test(r.verifier_id)) {'); s=s.replace("if (typeof s.key_id !== 'string' || !s.key_id)","if (typeof s.key_id !== 'string' || !s.key_id || [...s.key_id].length > 128)"); s=s.replace("!RE_ID.test(r.evidence_id)","!matches(RE_ID, r.evidence_id)").replace("!RE_ACTOR.test(r.actor_id)","!matches(RE_ACTOR, r.actor_id)").replace("!RE_DIGEST.test(r.payload_digest)","!matches(RE_DIGEST, r.payload_digest)").replace("!RE_ID.test(p)","!matches(RE_ID, p)").replace("!RE_SIG.test(s.value)","!matches(RE_SIG, s.value)").replace("!RE_ACTOR.test(r.verifier_id)","!matches(RE_ACTOR, r.verifier_id)"); s=s.replace('function kindOf(actorId: string): string {', '''function matches(re: RegExp, value: string): boolean { return re.exec(value)?.[0] === value } function validTimestamp(value: string): boolean { if (!matches(RE_TS, value)) return false const y = Number(value.slice(0, 4)), m = Number(value.slice(5, 7)), d = Number(value.slice(8, 10)) const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] return y >= 1 && m >= 1 && m <= 12 && d >= 1 && d <= days[m - 1] && Number(value.slice(11, 13)) <= 23 && Number(value.slice(14, 16)) <= 59 && Number(value.slice(17, 19)) <= 59 } function kindOf(actorId: string): string {''') a=s.index(' /* ---------------- timestamp ---------------- */'); b=s.index(' /* ---------------- actor identity ---------------- */',a) s=s[:a]+''' /* Format validation does not establish trusted time. */ if ('created_at_utc' in r && (typeof r.created_at_utc !== 'string' || !validTimestamp(r.created_at_utc))) { fail('EVC_TIMESTAMP', '/created_at_utc', 'must be a real UTC calendar timestamp with 1-9 optional fractional digits') } for (const [field, max] of [['engagement_id', 128], ['source_component', 256], ['source_version', 128], ['authorization_ref', Infinity]] as const) { if (field in r && (typeof r[field] !== 'string' || !r[field].length || [...r[field]].length > max)) { fail('EVC_STRING', `/${field}`, 'must be a nonempty string within the schema length limit') } } '''+s[b:] s=s.replace("r.limitations.some((l: unknown) => typeof l !== 'string')","r.limitations.some((l: unknown) => typeof l !== 'string' || [...l].length > 512)") s=s.replace("r.verifier_id !== undefined && r.verifier_id !== null", "Object.hasOwn(r, 'verifier_id')") s=s.replace('if (record === null || typeof record !== \'object\' || Array.isArray(record)) {',"if (record === null || typeof record !== 'object' || Array.isArray(record) || ![Object.prototype, null].includes(Object.getPrototypeOf(record))) {") s=s.replace('field "${k}" is not part of schema 1.0.0 and would be unsigned','field "${k}" is not part of schema 1.0.0') p.write_text(s) p=Path('verification-tools/envelope.py'); s=p.read_text().replace('"digest"', '"canonicalJson"').replace(' digest = None',' canonical_json = None').replace(' digest = canonicalize(r)',' canonical_json = canonicalize(r)').replace('"canonicalJson": digest','"canonicalJson": canonical_json'); s=s.replace('.match(', '.fullmatch('); s=s.replace('datetime.strptime(v.replace("Z", "+0000"), "%Y-%m-%dT%H:%M:%S.%f%z" if "." in v else "%Y-%m-%dT%H:%M:%S%z")','datetime.strptime(v[:19], "%Y-%m-%dT%H:%M:%S")'); marker=' # ---------------- actor ----------------'; s=s.replace(marker, ''' for field, maximum in (("engagement_id", 128), ("source_component", 256), ("source_version", 128), ("authorization_ref", float("inf"))): if field in r and (not isinstance(r[field], str) or not r[field] or len(r[field]) > maximum): fail("EVC_STRING", f"/{field}", "must be a nonempty string within the schema length limit") '''+marker); s=s.replace('any(not isinstance(x, str) for x in v)','any(not isinstance(x, str) or len(x) > 512 for x in v)'); s=s.replace('or not s.get("key_id"):', 'or not s.get("key_id") or len(s["key_id"]) > 128:'); s=s.replace('elif r.get("verifier_id") not in (None,):','elif "verifier_id" in r:'); p.write_text(s) PY
+View
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && python3 -c 'import jsonschema;print(jsonschema.__version__)' 2>/dev/null || true; grep -n "canonicalJson\|digest" verification-tools/envelope.ts verification-tools/envelope.py | tail -22; sed -n '160,205p' verification-tools/canonical.ts
+View
+4.26.0
+verification-tools/envelope.ts:196:    if (typeof r.payload_digest !== 'string' || !matches(RE_DIGEST, r.payload_digest)...
+verification-tools/envelope.ts:197:      // §3.7: reject malformed digests. Uppercase is rejected too — two spellings
+...
+/** SHA-256 of the canonical form, lowercase hex. Mirrors sha256Hex in lib/chain.ts. */
+export async function digest(value: unknown): Promise<string> {
+  const bytes = canonicalBytes(value)
+  const buf = await crypto.subtle.digest('SHA-256', bytes)
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && python3 - <<'PY' from pathlib import Path p=Path('verification-tools/envelope.ts');s=p.read_text();s=s.replace("export function validateEnvelope(record: unknown): ValidationResult {", "function validateEnvelopeStructure(record: unknown): ValidationResult {") s+=''' /** Shape validity is not an authorization decision or an authenticity result. */ export function validateEnvelope(record: unknown) { const structural = validateEnvelopeStructure(record) return { ...structural, scope: 'structural_validation_only', verification: { schema: structural.verdict === 'VALID' ? 'PASS' : structural.verdict === 'INVALID' ? 'FAIL' : 'INDETERMINATE', payloadIntegrity: 'NOT_RUN', signature: 'NOT_RUN', trustAnchor: 'NOT_RUN', parentResolution: 'NOT_RUN', authorization: 'NOT_RUN', claimState: 'NOT_RUN' }, limitations: [ 'Signature syntax only; no cryptographic signature or key-trust verification.', 'An auth_* reference does not prove a human grant exists, is current, or authorizes this action.', 'Distinct actor and verifier IDs do not establish independent control.', 'No payload bytes, parent store, authorization authority, or claim-state history was consulted.' ] } } ''' s=s.replace(' * Returns INDETERMINATE rather than INVALID when the record is well-formed but\n * cannot be judged from the record alone (e.g. a signature whose key trust is\n * unknown). That distinction is deliberate: §5 requires explicit outcomes and\n * §6 forbids a valid hash from being labelled authentic, so "I cannot tell" must\n * be a first-class answer rather than a quiet pass.', ' * This checks syntax and selected record-local consistency rules only.\n * VALID means structurally well-formed, never authentic, authorized or independently verified.\n * The exported wrapper explicitly reports all unperformed verification as NOT_RUN.') s=s.replace('// SR-4 (§4): a claim may not be promoted by repetition. Structurally that means\n // promotion to independently_verified is only reachable through verifier_id —\n // enforced above — and that a signature alone never promotes anything.', '// Record-local consistency only: real claim promotion requires external retained\n // evidence and trust checks. Merely naming a verifier cannot establish independence.') s=s.replace('// §6: do not emit a digest for a record that must not be admitted — a digest\n // is an invitation to treat it as evidence.', '// Only structurally valid records receive a canonical form. No hash or trust\n // decision is returned here.') p.write_text(s) p=Path('verification-tools/envelope.py');s=p.read_text().replace('def validate_envelope(record: Any) -> dict:', 'def _validate_envelope_structure(record: Any) -> dict:');idx=s.index('\n\nif __name__ == "__main__":');s=s[:idx]+''' def validate_envelope(record: Any) -> dict: structural = _validate_envelope_structure(record) return { **structural, "scope": "structural_validation_only", "verification": { "schema": {"VALID": "PASS", "INVALID": "FAIL", "INDETERMINATE": "INDETERMINATE"}[structural["verdict"]], **{key: "NOT_RUN" for key in ("payloadIntegrity", "signature", "trustAnchor", "parentResolution", "authorization", "claimState")}, }, "limitations": [ "Signature syntax only; no cryptographic signature or key-trust verification.", "An auth_* reference does not prove a human grant exists, is current, or authorizes this action.", "Distinct actor and verifier IDs do not establish independent control.", "No payload bytes, parent store, authorization authority, or claim-state history was consulted.", ], } '''+s[idx:];s=s.replace(' A digest is emitted only for VALID records. §6 forbids treating a valid hash\n as proof of authenticity, and emitting a digest for a record that must not be\n admitted is an invitation to do exactly that.', ' VALID is a structural result only. canonicalJson is not a digest.\n Signature, trust, authorization and provenance verification are NOT_RUN.');p.write_text(s) PY
+View
+Exit Code: 0
+Write File
+/home/user/webapp/tests/suites/unit-contract.mjs
+View
+// Retained cross-runtime envelope fixtures. These prove structural compatibility,
+// NOT independent verification, key trust, authorization, or authenticity.
+import fs from 'node:fs'
+...
+    limitations: ['No cryptographic signature verification, trust store, grant resolution, payload comparison, parent re...
+  }
+  fs.writeFileSync(path.join(ROOT, 'tests/report/envelope-compatibility.json'), JSON.stringify(report, null, 2))
+}
+Edit File
+/home/user/webapp/tests/run-all.mjs
+View
+--- a//home/user/webapp/tests/run-all.mjs+++ b//home/user/webapp/tests/run-all.mjs@@ -29,6 +29,7 @@   { key: 'unit-retrieval', label: 'Unit — retrieval & ranking', file: './suites/unit-retrieval.mjs' },
+   { key: 'unit-audit', label: 'Unit — audit & evidence ledger', file: './suites/unit-audit.mjs' },
+   { key: 'unit-toolkit', label: 'Unit — agent toolkit self-grading', file: './suites/unit-toolkit.mjs' },
++  { key: 'unit-contract', label: 'Unit — cross-runtime evidence envelope', file: './suites/unit-contract.mjs' },
+   { key: 'bench', label: 'Benchmark — latency, throughput, scaling', file: './suites/bench.mjs' },
+   { key: 'api', label: 'Live API — contract, persistence, verification', file: './suites/api-live.mjs', requiresServer: true }
+ ]
+Bash Command
+cd /home/user/webapp && node tests/run-all.mjs --only=contract
+View
+
+[1mCAIRN — full verification run[0m
+[90m2026-11-13T05:25:19.099Z  node v22.23.4  linux/x64[0m
+...
+
+  report: tests/report/report.md
+  data:   tests/report/results.json
+
+Exit Code: 0
+The envelope suite passes 59/59 assertions. It compares both runtimes on required fields, malformed digests, impossible dates, unknown algorithms, self-parenting, and self-verification claims.
+
+Two important limits are now explicit in every result:
+
+auth_fabricated can pass a format check, but authorization remains NOT_RUN.
+Different actor and verifier IDs do not prove independent control; that verification remains NOT_RUN.
+I’m doing one final canonicalization boundary check before the full regression run.
+
+Read File
+/home/user/webapp/verification-tools/canonical.ts
+View
+     1	// ============================================================================
+     2	// AN-EVC-001 §3 — Canonical serialization (TypeScript reference implementation)
+     3	//
+...
+   218	  let diff = 0
+   219	  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+   220	  return diff === 0
+   221	}
+Read File
+/home/user/webapp/verification-tools/canonical.py
+View
+   220	    """
+   221	    Parse-time guard for unsafe integer literals. Mirror of the TypeScript
+   222	    assertSafeIntegerLiterals().
+...
+   298	    except CanonicalError as e:
+   299	        sys.stdout.write(json.dumps({"error": e.code, "message": e.message}))
+   300	    except json.JSONDecodeError as e:
+   301	        sys.stdout.write(json.dumps({"error": "EVC_JSON", "message": str(e)}))
+Bash Command
+cd /home/user/webapp && python3 - <<'PY' from pathlib import Path p=Path('verification-tools/canonical.ts');s=p.read_text();s=s.replace(" if (cp === 0x22)"," if (cp >= 0xd800 && cp <= 0xdfff) throw new CanonicalError('EVC_LONE_SURROGATE', 'unpaired surrogate is not valid Unicode')\n if (cp === 0x22)");s=s.replace(' const ab = new TextEncoder().encode(a)\n const bb = new TextEncoder().encode(b)\n','');a=s.index(" if (ch === '-' || (ch >= '0' && ch <= '9')) {",s.index('export function assertSafeIntegerLiterals'));b=s.index(' i++\n }\n}',a) s=s[:a]+''' if (ch === '-' || (ch >= '0' && ch <= '9')) { const token = /^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(jsonText.slice(i))?.[0] if (!token) throw new CanonicalError('EVC_JSON', 'invalid numeric token') i += token.length if (!/[.eE]/.test(token)) { // Compare digits, not Number(token): a huge literal can overflow to // Infinity, which made the previous finite-only guard silently pass it. const digits = token.replace(/^-/, '') const max = String(MAX_SAFE) if (digits.length > max.length || (digits.length === max.length && digits > max)) { throw new CanonicalError('EVC_INT_UNSAFE', 'bare integer literal exceeds safe range; encode as a string') } } else if (!Number.isFinite(Number(token))) { throw new CanonicalError('EVC_NONFINITE', 'numeric token overflows IEEE 754') } continue } '''+s[b:];s=s.replace(' * Digest constant-time compare. A verifier that compares digests with `===` and\n * exits early leaks the position of the first wrong byte; for a local CLI that\n * is a small concern, but an evidence verifier should not be the place we start\n * making that exception.', ' * Full-scan string comparison. This avoids explicit prefix exits, but JS JIT\n * behaviour does not provide a cryptographic constant-time guarantee.');p.write_text(s) p=Path('verification-tools/canonical.py');s=p.read_text();a=s.index(' if ch == "-" or ch.isdigit():',s.index('def assert_safe_integer_literals'));b=s.index(' i += 1\n',s.index(' continue',a));s=s[:a]+''' if ch == "-" or ch in "0123456789": match = re.match(r"-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?", json_text[i:]) if not match: raise CanonicalError("EVC_JSON", "invalid numeric token") token = match.group(0) i += len(token) if not any(c in token for c in ".eE"): digits = token.lstrip("-") maximum = str(MAX_SAFE_INT) if len(digits) > len(maximum) or (len(digits) == len(maximum) and digits > maximum): raise CanonicalError("EVC_INT_UNSAFE", "bare integer literal exceeds safe range; encode as a string") elif not math.isfinite(float(token)): raise CanonicalError("EVC_NONFINITE", "numeric token overflows IEEE 754") continue '''+s[b:];p.write_text(s) PY node verification-tools/interop.mjs
+View
+
+[1mAN-EVC-001 — canonical serialization, cross-runtime[0m
+[90mnode v22.23.4 · python3 3.13.14[0m
+...
+════════════════════════════════════════════════════════════════
+  [1m36/36 assertions passed[0m   [32mcoalition agrees[0m
+════════════════════════════════════════════════════════════════
+
+Exit Code: 0
+Edit File
+/home/user/webapp/tests/suites/unit-contract.mjs
+View
+--- a//home/user/webapp/tests/suites/unit-contract.mjs+++ b//home/user/webapp/tests/suites/unit-contract.mjs@@ -94,6 +94,27 @@     record({ suite: 'contract', name: f.name, ok, detail: `ts=${a.verdict} py=${b.verdict}; trust/authorization NOT_RUN`, expected: f.expected, actual: { ts: a.verdict, py: b.verdict, same } })
+     rows.push({ ...f, ok, typescript: a, python: b })
+   }
++  const canon = await loadTs('verification-tools/canonical.ts')
++  for (const [text, expected] of [
++    ['{"n":9007199254740993}', 'EVC_INT_UNSAFE'],
++    ['{"n":' + '9'.repeat(400) + '}', 'EVC_INT_UNSAFE'],
++    ['{"n":1e999}', 'EVC_NONFINITE'],
++    ['{"n":0.12345678901234567890}', 'OK'],
++    ['{"n":1e-100}', 'OK'],
++    ['{"n":1e21}', 'OK'],
++    ['{"n":"9007199254740993"}', 'OK']
++  ]) {
++    let actual = 'OK'
++    try { canon.assertSafeIntegerLiterals(text) } catch (e) { actual = e.code }
++    const output = execFileSync('python3', [path.join(ROOT, 'verification-tools/canonical.py'), '--mode=guard'], { input: text, encoding: 'utf8' }).trim()
++    const pyActual = output === 'OK' ? 'OK' : JSON.parse(output).error
++    record({ suite: 'contract', name: `numeric input boundary: ${text.slice(0, 44)}`, ok: actual === expected && pyActual === expected, expected, actual: { ts: actual, py: pyActual } })
++  }
++  let unicodeError = null
++  try { canon.canonicalize('\ud800') } catch (e) { unicodeError = e.code }
++  const pyUnicode = JSON.parse(execFileSync('python3', [path.join(ROOT, 'verification-tools/canonical.py')], { input: '"\\ud800"', encoding: 'utf8' })).error
++  record({ suite: 'contract', name: 'both runtimes reject lone surrogates rather than replacing UTF-8 bytes', ok: unicodeError === 'EVC_LONE_SURROGATE' && pyUnicode === unicodeError })
++
+   // inherited fields are not signed by Object.keys and must not satisfy required fields
+   const inherited = Object.create(BASE)
+   const inheritedResult = ts.validateEnvelope(inherited)
+Bash Command
+cd /home/user/webapp && node tests/run-all.mjs --only=contract
+View
+
+[1mCAIRN — full verification run[0m
+[90m2026-11-13T05:26:20.408Z  node v22.23.4  linux/x64[0m
+...
+
+  report: tests/report/report.md
+  data:   tests/report/results.json
+
+Exit Code: 0
+Read File
+/home/user/webapp/schemas/evidence-envelope.schema.json
+View
+     1	{
+     2	  "$schema": "https://json-schema.org/draft/2020-12/schema",
+     3	  "$id": "urn:atomic-nexus:an-evc-001:evidence-envelope:1.0.0",
+...
+   124	      "rationale": "§3.6: reject unknown algorithms and unsupported schema versions."
+   125	    }
+   126	  ]
+   127	}
+Read File
+/home/user/webapp/README.md
+View
+    40	| Table | Purpose |
+    41	|---|---|
+    42	| `threads` | id, title, query, focus, mode, share_slug, is_public, saved, collection, owner, timestamps |
+...
+   183	
+   184	## Deployment status
+   185	
+   186	**Not deployed.** Two deploy paths are available (deploy to the user's own Cloudflare account, or Genspark-hosted...
+Deep Thinking
+Total: 3 Tasks
+2 Tasks Remaining
+Correct envelope validation semantics and cross-runtime inconsistencies
+Execute retained adversarial envelope compatibility tests
+Update project status documentation and commit tested changes
+Write File
+/home/user/webapp/README.md
+View
+# CAIRN / Atomic Nexus Contract Registry
+
+CAIRN is a Hono + Cloudflare Pages retrieval-grounded answer engine with a sentence-level Evidence Ledger. Stage 02 adds...
+...
+
+The existing CAIRN app remains a local sandbox preview on port 3000. Permanent production URLs have not been issued for ...
+
+Secrets belong in `.dev.vars` locally and server-side secrets in production; never in frontend assets. Git branch: `main...
+Bash Command
+cd /home/user/webapp && set -o pipefail && npm run build && node verification-tools/interop.mjs && node tests/run-all.mjs
+View
+
+> build
+> vite build
+...
+
+  report: tests/report/report.md
+  data:   tests/report/results.json
+
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && python3 - <<'PY' from pathlib import Path import json p=Path('schemas/evidence-envelope.schema.json');d=json.loads(p.read_text());d['description']='Draft structural envelope schema. x-an-evc-semantic-rules are annotations, not standard JSON Schema assertions. Companion validators implement selected record-local rules; neither this schema nor those validators establishes authenticity, authorization or independence.';d['x-status']='draft; not independently reviewed';d['properties']['created_at_utc']['description']='UTC timestamp syntax. Companion validators also check calendar validity. Format checks do not establish trusted time.';d['properties']['actor_id']['description']='Claimed identity with a type prefix. The prefix does not authenticate the identity or its controller.';d['properties']['signature']['properties']['alg']['description']='Permitted algorithm names for structural validation only. Cryptographic verification is not implemented.';d['x-an-evc-semantic-rules'][1]['rule']='Agent policy records require a syntactically eligible authorization reference; the actual grant must be resolved externally.';d['x-an-evc-semantic-rules'][3]['rationale']='Claim-state history and independent control require external verification. A verifier_id field or signature-shaped object is insufficient.';p.write_text(json.dumps(d,indent=2,ensure_ascii=False)+'\n') for f in ['verification-tools/envelope.ts','verification-tools/envelope.py']: p=Path(f);s=p.read_text();s=s.replace('where authority is laundered:', 'where contradictory declarations are detectable (not a substitute for trust verification):').replace('an agent cannot sign a policy decision without a human authorization','an agent policy record requires a grant-reference shape; grant verification is NOT_RUN').replace('claim status cannot be promoted by repetition or agreement','claim declarations require local consistency; historical promotion checks are NOT_RUN');p.write_text(s) PY node tests/run-all.mjs --only=contract >/tmp/contract-final.log && tail -7 /tmp/contract-final.log git diff --stat && git status --short
+View
+════════════════════════════════════════════════════════════════
+  [1m67/67 assertions passed[0m   [32mno failures[0m
+════════════════════════════════════════════════════════════════
+...
+?? tests/report/envelope-compatibility.json
+?? tests/suites/unit-contract.mjs
+?? verification-tools/envelope.py
+?? verification-tools/envelope.ts
+Exit Code: 0
+Bash Command
+cd /home/user/webapp && set -o pipefail && python3 - <<'PY' import json from jsonschema import Draft202012Validator s=json.load(open('schemas/evidence-envelope.schema.json')) Draft202012Validator.check_schema(s) print('Draft 2020-12 schema syntax: PASS (does not execute x-an-evc semantic annotations)') PY node tests/run-all.mjs | tail -9 node verification-tools/interop.mjs | tail -5 git diff --check
+View
+Draft 2020-12 schema syntax: PASS (does not execute x-an-evc semantic annotations)
+  [32mPASS[0m  injection attempt is refused rather than obeyed  [90mmodel declines instead of following the injected ...
+
+...
+════════════════════════════════════════════════════════════════
+  [1m36/36 assertions passed[0m   [32mcoalition agrees[0m
+════════════════════════════════════════════════════════════════
+
+Exit Code: 0
+Deep Thinking
+Total: 3 Tasks
+1 Task Remaining
+Correct envelope validation semantics and cross-runtime inconsistencies
+Execute retained adversarial envelope compatibility tests
+Update project status documentation and commit tested changes
+Final run: 186/186 main-suite assertions passed, plus 36/36 in the separate canonicalization harness. The main suite includes 67 new contract assertions. Build and schema-syntax checks also pass.
+
+I’m retaining the fixtures, outputs, source hashes, and runtime versions. Production remains blocked as you specified: signatures, key trust, grant enforcement, and independent review are still missing.
+
+Bash Command
+cd /home/user/webapp && git add README.md schemas/evidence-envelope.schema.json verification-tools/envelope.ts verification-tools/envelope.py verification-tools/canonical.ts verification-tools/canonical.py verification-tools/interop-report.json tests/run-all.mjs tests/suites/unit-contract.mjs tests/report && git commit -m "Add draft evidence-envelope validators and retained cross-runtime adversarial tests" && git status --short && git log -1 --format='%h %s'
+View
+[main 107c6f5] Add draft evidence-envelope validators and retained cross-runtime adversarial tests
+ 12 files changed, 6348 insertions(+), 266 deletions(-)
+ create mode 100644 schemas/evidence-envelope.schema.json
+...
+ create mode 100644 tests/suites/unit-contract.mjs
+ create mode 100644 verification-tools/envelope.py
+ create mode 100644 verification-tools/envelope.ts
+107c6f5 Add draft evidence-envelope validators and retained cross-runtime adversarial tests
+Exit Code: 0
+Deep Thinking
+Total: 3 Tasks
+0 Tasks Remaining
+Correct envelope validation semantics and cross-runtime inconsistencies
+Execute retained adversarial envelope compatibility tests
+Update project status documentation and commit tested changes
+Stage 02 — implemented foundation, not self-certified compliance
+
+Committed on main: 107c6f5
+Working tree is clean. No production deployment performed.
+
+Delivered
+
+Component	Implementation
+Canonical serialization	Python and TypeScript implementations, shared vectors and cross-runtime byte comparisons
+Evidence envelope	Draft AN-EVC-001 JSON Schema
+Structural validators	Python and TypeScript checks for required fields, versions, digest format, timestamps and record-local consistency
+Adversarial fixtures	Missing fields, unknown algorithms, self-verification, self-parenting, malformed identities, numeric overflow and Unicode boundaries
+Retained evidence	Inputs, outputs, source hashes, runtime versions and tested revision
+Executed results
+
+186/186 main-suite assertions passed, including 67 new contract assertions.
+36/36 separate canonicalization assertions passed.
+Production build passed.
+Draft JSON Schema syntax check passed.
+These are self-executed tests, labeled tested—not independently verified.
+
+The authority boundary is explicit
+
+A structurally valid record now reports:
+
+CopySchema validation       PASS
+Payload integrity       NOT_RUN
+Signature verification  NOT_RUN
+Trust-anchor validation NOT_RUN
+Authorization           NOT_RUN
+Parent resolution       NOT_RUN
+Claim-state provenance  NOT_RUN
+An auth_* string does not prove permission. Different verifier and author IDs do not prove independence. A hash does not prove identity, trusted time or truth.
+
+Remaining release blockers
+
+Authorization, agent-identity, tool-capability and pipeline-transition schemas.
+Signature verification and independently managed key trust, revocation and rotation.
+Payload/parent resolution, replay handling and evidence custody.
+Enforcement at consequential execution boundaries, including tenant isolation and active revocation.
+Full canonicalization conformance testing and independent review.
+iOS/KMP/Python-runtime integration against inspectable source artifacts.
+Evidence files: tests/report/envelope-compatibility.json, tests/report/results.json, and verification-tools/interop-report.json.
+
+The coalition now has a tested contract foundation. It does not yet have a completed authorization system or an independently approved release.
+
+
+
+
+
+Rate your execution as an outsider would! Rendering a polished ready to handoff our master file tree showcase.
+You've used all your credits. Kindly visit this page to add more: upgrade
+
+Preview / File Explorer / Settings / Publish / Tutorial
+
+
+DeepSeek V4.1 Flash-1017
