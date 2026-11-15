@@ -6,6 +6,23 @@ export interface ProjectFile {
   lastModified: number;
 }
 
+export type VerificationClaimLevel =
+  | 'untested'
+  | 'syntax_checked'
+  | 'policy_checked'
+  | 'tests_passed'
+  | 'independently_verified'
+  | 'signed';
+
+export interface CommitProvenance {
+  source: 'workspace_edit' | 'external_drop' | 'device_pull' | 'device_import' | 'blueprint' | 'codex';
+  claimStatus: 'untested' | 'tested';
+  claimLevel?: VerificationClaimLevel;
+  authorizationPermitId?: string;
+  epoch?: number;
+  fencingVersion?: number;
+}
+
 export interface Commit {
   id: string;
   message: string;
@@ -14,6 +31,9 @@ export interface Commit {
   files: ProjectFile[];
   hash: string;
   parentHash: string | null;
+  fileHashes?: Record<string, string>;
+  treeDigest?: string;
+  provenance?: CommitProvenance;
 }
 
 export interface Branch {

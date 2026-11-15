@@ -148,6 +148,13 @@ export function resolveSentimentTelemetryUrl(
 
 export type TelemetryTriggerReason = 'resolved' | 'session_close';
 
+export interface SessionTelemetryStats {
+  sessionInteractions: number;
+  sessionResolved: number;
+  sessionAverageResponseTimeMs: number;
+  sessionDurationMs: number;
+}
+
 export interface RemoteTelemetryPayload {
   event: 'assistant_interaction' | 'assistant_session_summary';
   trigger: TelemetryTriggerReason;
@@ -155,19 +162,22 @@ export interface RemoteTelemetryPayload {
   sentAt: number;
   record?: InteractionRecord;
   summary: SentimentMetricsSummary;
+  sessionStats?: SessionTelemetryStats;
 }
 
 export async function pushTelemetryEvent(
   record: InteractionRecord | undefined,
   summary: SentimentMetricsSummary = computeSentimentMetrics(getStoredInteractions()),
   endpointOverride?: string,
-  trigger: TelemetryTriggerReason = 'resolved'
+  trigger: TelemetryTriggerReason = 'resolved',
+  sessionStats?: SessionTelemetryStats,
+  preferBeacon: boolean = false
 ): Promise<boolean> {
   const targetUrl = endpointOverride
     ? resolveSentimentTelemetryUrl({ VITE_SENTIMENT_TELEMETRY_URL: endpointOverride })
     : resolveSentimentTelemetryUrl();
 
-  if (!targetUrl || typeof fetch === 'undefined') {
+  if (!targetUrl) {
     return false;
   }
 
@@ -178,13 +188,39 @@ export async function pushTelemetryEvent(
     sentAt: Date.now(),
     ...(record ? { record } : {}),
     summary,
+    ...(sessionStats ? { sessionStats } : {}),
   };
+
+  const serialized = JSON.stringify(payload);
+
+  if (
+    preferBeacon &&
+    trigger === 'session_close' &&
+    typeof navigator !== 'undefined' &&
+    typeof navigator.sendBeacon === 'function'
+  ) {
+    try {
+      const blob =
+        typeof Blob !== 'undefined'
+          ? new Blob([serialized], { type: 'application/json' })
+          : serialized;
+      if (navigator.sendBeacon(targetUrl, blob)) {
+        return true;
+      }
+    } catch {
+      // Fall through to keepalive fetch
+    }
+  }
+
+  if (typeof fetch === 'undefined') {
+    return false;
+  }
 
   try {
     const res = await fetch(targetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: serialized,
       keepalive: true,
     });
     return res.ok;

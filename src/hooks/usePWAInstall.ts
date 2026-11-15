@@ -1,22 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+export function detectStandaloneDisplayMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  const mediaMatches =
+    typeof window.matchMedia === 'function'
+      ? window.matchMedia('(display-mode: standalone)').matches
+      : false;
+  const iosStandalone =
+    (window.navigator as unknown as { standalone?: boolean } | undefined)?.standalone === true;
+  return mediaMatches || iosStandalone;
+}
+
 export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
+  const [isInstalled, setIsInstalled] = useState<boolean>(() => detectStandaloneDisplayMode());
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-    setIsInstalled(isStandalone);
+    if (typeof window === 'undefined') return;
 
-    const userAgent = window.navigator.userAgent.toLowerCase();
+    setIsInstalled(detectStandaloneDisplayMode());
+
+    const userAgent = (window.navigator?.userAgent || '').toLowerCase();
     setIsIOS(/iphone|ipad|ipod/.test(userAgent));
 
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -29,26 +39,44 @@ export function usePWAInstall() {
       setDeferredPrompt(null);
     };
 
+    const mediaQuery =
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(display-mode: standalone)')
+        : null;
+
+    const handleDisplayModeChange = (event: MediaQueryListEvent) => {
+      if (event.matches) {
+        setIsInstalled(true);
+      }
+    };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
+    mediaQuery?.addEventListener?.('change', handleDisplayModeChange);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      mediaQuery?.removeEventListener?.('change', handleDisplayModeChange);
     };
   }, []);
 
-  const install = async () => {
+  const install = useCallback(async () => {
     if (!deferredPrompt) return false;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setIsInstalled(true);
+    try {
+      await deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
       setDeferredPrompt(null);
-      return true;
+      if (outcome === 'accepted') {
+        setIsInstalled(true);
+        return true;
+      }
+      return false;
+    } catch {
+      setDeferredPrompt(null);
+      return false;
     }
-    return false;
-  };
+  }, [deferredPrompt]);
 
   return {
     isInstallable: !!deferredPrompt,
@@ -64,6 +92,7 @@ export function useOnlineStatus() {
   );
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 

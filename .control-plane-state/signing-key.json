@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "activeKeyId": "key_6d18b20aed15",
+  "activePublicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+  "activePrivateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEILvFj6pikVEhDmjMjKki7UgrUKSWDSCJ293Xp7VQJRrx\n-----END PRIVATE KEY-----\n",
+  "publicKeysById": {
+    "key_5170815980fe": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAdZMHBCmKpRnDDCQjL/qgfVJiMCPeWzoMk/AXfD0cPMI=\n-----END PUBLIC KEY-----\n",
+    "key_6d18b20aed15": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n"
+  },
+  "keyTransitions": [
+    {
+      "prevKeyId": "key_5170815980fe",
+      "nextKeyId": "key_6d18b20aed15",
+      "nextPublicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "rotatedAt": 1794779878279,
+      "actor": "human:mercy",
+      "canonicalPayload": "{\"action\":\"signing_key_rotation\",\"actor\":\"human:mercy\",\"contract\":\"AN-EVC-001\",\"nextKeyId\":\"key_6d18b20aed15\",\"nextPublicKeyPem\":\"-----BEGIN PUBLIC KEY-----\\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\\n-----END PUBLIC KEY-----\\n\",\"prevKeyId\":\"key_5170815980fe\",\"rotatedAt\":1794779878279}",
+      "signedByPreviousKey": "OVh292HeruyUix5eazgKqkXa5Nq5IKKLWHDKnhKqH/zdbyyThu6auKD+EygIY+XxzOaS9d9VwdnCh9PcLYVBCg==",
+      "signedByNewKey": "ta7OYAjoThGMUTDAB4UtaPM2d5z0nTsEJxroPyXg+Fw+aFurbVhA9sVqq4LlWNJh/K3nUQAs1R0PZkGWcbTGCg=="
+    }
+  ],
+  "sessionHmacSecret": "0a2f4172fbbe9b234f1f38604878ad6200b83d9e3b7f935a02c8c6a8ba08e9c5"
+}

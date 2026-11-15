@@ -696,7 +696,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 ref={iframeRef}
                 title="Codex Live App Preview"
                 srcDoc={bundledHtml}
-                sandbox="allow-scripts allow-forms allow-same-origin allow-modals"
+                sandbox="allow-scripts allow-forms allow-modals"
                 className="w-full h-full border-none rounded-lg bg-slate-900 shadow-xl"
               />
             </div>

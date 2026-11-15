@@ -1,0 +1,306 @@
+{
+  "version": 1,
+  "workspaceId": "ws_unified_one",
+  "state": {
+    "contract": "GLOBAL-MODE-001",
+    "mode": "ACTIVE",
+    "epoch": 1,
+    "minFencingVersion": 2,
+    "activePermit": {
+      "permitId": "perm_2b285969cc8000e0",
+      "subject": "human:mercy",
+      "issuer": "server:key_5170815980fe",
+      "epoch": 1,
+      "fencingVersion": 2,
+      "issuedAt": 1794779870713,
+      "expiresAt": 1794780770713,
+      "scopes": [
+        "workspace_ingest",
+        "workspace_commit",
+        "device_sync"
+      ],
+      "revoked": false,
+      "digest": "919ae1eb3c479097c95847244e5250b7a7dd2a28563d7982400d915eb445416b",
+      "serverSignature": "01hkytGtq6VEhrz5xA3bvmfSgBKeRFT2FzI1h+QROK5O+OxJgc/hm/JojnTnXsliJ177uEIDR6ImRPrR+JHVCw=="
+    },
+    "revokedPermitIds": [],
+    "lastTransitionAt": 1794779870713,
+    "lastTransitionReason": "Server control-plane initialized ACTIVE session",
+    "linearizationSeq": 2,
+    "activeKeyId": "key_6d18b20aed15",
+    "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+    "publicKeysById": {
+      "key_5170815980fe": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAdZMHBCmKpRnDDCQjL/qgfVJiMCPeWzoMk/AXfD0cPMI=\n-----END PUBLIC KEY-----\n",
+      "key_6d18b20aed15": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n"
+    }
+  },
+  "ledger": [
+    {
+      "index": 0,
+      "action": "control_plane_boot",
+      "entityId": "key_5170815980fe",
+      "author": "system",
+      "timestamp": 1794779870714,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "fencingVersion": 2,
+        "permitId": "perm_2b285969cc8000e0"
+      },
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "hash": "c665ba56dc5ea0d0653e2f228b29d6af5a69a96093ada0c322815e665c3c8438"
+    },
+    {
+      "index": 1,
+      "action": "server_workspace_ingest_authorized",
+      "entityId": "tx_http_1",
+      "author": "human:mercy",
+      "timestamp": 1794779878265,
+      "data": {
+        "transactionId": "tx_http_1",
+        "receiptId": "rcpt_a0ab8c40289788ec",
+        "keyId": "key_5170815980fe",
+        "permitId": "perm_2b285969cc8000e0",
+        "epoch": 1,
+        "treeDigest": "90e854e1edb94f3a45bafac3a3979599641c1dd748dd502e42690bb0a0e18193",
+        "fileHashes": {
+          "src/a.ts": "baf02d3731eb6b5cb1a0dc2e2445c0d0f65dfc9c2ec6a1cb68945771c80979b8"
+        },
+        "claimStatus": "untested",
+        "claimLevel": "untested"
+      },
+      "previousHash": "c665ba56dc5ea0d0653e2f228b29d6af5a69a96093ada0c322815e665c3c8438",
+      "hash": "d27edbd8e5ba9e1ba43a09acab039b23979ceb0c12ba1263091304eac2e88851"
+    },
+    {
+      "index": 2,
+      "action": "transaction_idempotency_conflict",
+      "entityId": "tx_http_1",
+      "author": "human:mercy",
+      "timestamp": 1794779878275,
+      "data": {
+        "existingDigest": "8a2e1332d1d96a7d30eab7f03c9e5b3363f4f682a3395d19ab26adf18e38a4f2",
+        "incomingDigest": "14ecf88a24058498fe0dc67398f2e407ae1b154c560539373fb7718f0af3bdc0"
+      },
+      "previousHash": "d27edbd8e5ba9e1ba43a09acab039b23979ceb0c12ba1263091304eac2e88851",
+      "hash": "f9cd0317fcc0661457eb1c8f8a53db15b8cc064b9e42c6d0232951dcf36d70f2"
+    },
+    {
+      "index": 3,
+      "action": "signing_key_rotated",
+      "entityId": "key_6d18b20aed15",
+      "author": "human:mercy",
+      "timestamp": 1794779878279,
+      "data": {
+        "prevKeyId": "key_5170815980fe",
+        "nextKeyId": "key_6d18b20aed15",
+        "rotatedAt": 1794779878279
+      },
+      "previousHash": "f9cd0317fcc0661457eb1c8f8a53db15b8cc064b9e42c6d0232951dcf36d70f2",
+      "hash": "08da685bb311ffc488cf3cb803804831728f5ebe5c8ea7fdd10cfc252dbd7a6f"
+    },
+    {
+      "index": 4,
+      "action": "watch_verification_completed",
+      "entityId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794779878388,
+      "data": {
+        "allPassed": true,
+        "claimStatus": "tested",
+        "claimLevel": "policy_checked",
+        "claimScope": "syntax_and_static_policy_only (no arbitrary app test execution)",
+        "testsExecuted": false,
+        "fileCount": 1,
+        "receiptId": "rcpt_94ed6a9380493de3",
+        "keyId": "key_6d18b20aed15"
+      },
+      "previousHash": "08da685bb311ffc488cf3cb803804831728f5ebe5c8ea7fdd10cfc252dbd7a6f",
+      "hash": "1413ef97b39261091c49a35e760f2a99069c5f50ea1e809b12013ea674f099c5"
+    },
+    {
+      "index": 5,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794779894214,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 5,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "1413ef97b39261091c49a35e760f2a99069c5f50ea1e809b12013ea674f099c5",
+      "hash": "098e351c422632877ec491250628082e188e0fabca1ca0339e407f4fad6a192f"
+    },
+    {
+      "index": 6,
+      "action": "server_workspace_ingest_authorized",
+      "entityId": "tx_1794779913443_e9fc6deb",
+      "author": "human:mercy",
+      "timestamp": 1794779913451,
+      "data": {
+        "transactionId": "tx_1794779913443_e9fc6deb",
+        "receiptId": "rcpt_ac1f14249fa6340b",
+        "keyId": "key_6d18b20aed15",
+        "permitId": "perm_2b285969cc8000e0",
+        "epoch": 1,
+        "treeDigest": "b58710bbfddac5a1e205ecccd97043b2712638e20f331ce1ff11bca2bf427b3f",
+        "fileHashes": {
+          "probe_fiv002.ts": "e2e17f20f9cbef566c7a50611442408efc3211665c077a4240d75819f8994fb4"
+        },
+        "claimStatus": "untested",
+        "claimLevel": "untested"
+      },
+      "previousHash": "098e351c422632877ec491250628082e188e0fabca1ca0339e407f4fad6a192f",
+      "hash": "cb588d323c9837e5c1d4a26046a482482734954f30ca200681a51f33d372908a"
+    },
+    {
+      "index": 7,
+      "action": "watch_verification_completed",
+      "entityId": "f15e5fc760b57951ea6afbd6730dd5f6075685c8ab7b21e7db55ef6cc2e37a6b",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794779913880,
+      "data": {
+        "allPassed": true,
+        "claimStatus": "tested",
+        "claimLevel": "policy_checked",
+        "claimScope": "syntax_and_static_policy_only (no arbitrary app test execution)",
+        "testsExecuted": false,
+        "fileCount": 1,
+        "receiptId": "rcpt_d4cb49bc12812c68",
+        "keyId": "key_6d18b20aed15"
+      },
+      "previousHash": "cb588d323c9837e5c1d4a26046a482482734954f30ca200681a51f33d372908a",
+      "hash": "84d562832b1611df94a6c746aea7be54e488ef1689ce3ab9a93dc8ae590e7952"
+    }
+  ],
+  "checkpoints": [
+    {
+      "checkpointSeq": 1,
+      "ledgerLength": 1,
+      "tipIndex": 0,
+      "tipHash": "c665ba56dc5ea0d0653e2f228b29d6af5a69a96093ada0c322815e665c3c8438",
+      "timestamp": 1794779870715,
+      "keyId": "key_5170815980fe",
+      "canonicalPayload": "{\"checkpointSeq\":1,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_5170815980fe\",\"ledgerLength\":1,\"timestamp\":1794779870715,\"tipHash\":\"c665ba56dc5ea0d0653e2f228b29d6af5a69a96093ada0c322815e665c3c8438\",\"tipIndex\":0}",
+      "signature": "PwSKqBJvVzVvbWCeO4Kcvn0zxPWCbYP+QbuR2JYPsfd0EN9nlg+QsrRcieMk7DpvB7nZICujS8k36+5HNU8GBA=="
+    },
+    {
+      "checkpointSeq": 2,
+      "ledgerLength": 2,
+      "tipIndex": 1,
+      "tipHash": "d27edbd8e5ba9e1ba43a09acab039b23979ceb0c12ba1263091304eac2e88851",
+      "timestamp": 1794779878265,
+      "keyId": "key_5170815980fe",
+      "canonicalPayload": "{\"checkpointSeq\":2,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_5170815980fe\",\"ledgerLength\":2,\"timestamp\":1794779878265,\"tipHash\":\"d27edbd8e5ba9e1ba43a09acab039b23979ceb0c12ba1263091304eac2e88851\",\"tipIndex\":1}",
+      "signature": "u22I4Qc/x6yMD35uXcmtRlkAapVwzRhspEjA4+n+M2kMvN1IcrN7xhuqu5wMjqv18Pf6hs2ZD6vFax8zZcyMBw=="
+    },
+    {
+      "checkpointSeq": 3,
+      "ledgerLength": 3,
+      "tipIndex": 2,
+      "tipHash": "f9cd0317fcc0661457eb1c8f8a53db15b8cc064b9e42c6d0232951dcf36d70f2",
+      "timestamp": 1794779878275,
+      "keyId": "key_5170815980fe",
+      "canonicalPayload": "{\"checkpointSeq\":3,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_5170815980fe\",\"ledgerLength\":3,\"timestamp\":1794779878275,\"tipHash\":\"f9cd0317fcc0661457eb1c8f8a53db15b8cc064b9e42c6d0232951dcf36d70f2\",\"tipIndex\":2}",
+      "signature": "XPXo002BgbTNk6WW54TMohzIz+A7pVYaOkTShxNvFMHjw8FAOmGGGDTJTfvPsyHcZz3MBNKUt47wo1t/zzZ2CA=="
+    },
+    {
+      "checkpointSeq": 4,
+      "ledgerLength": 4,
+      "tipIndex": 3,
+      "tipHash": "08da685bb311ffc488cf3cb803804831728f5ebe5c8ea7fdd10cfc252dbd7a6f",
+      "timestamp": 1794779878280,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":4,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":4,\"timestamp\":1794779878280,\"tipHash\":\"08da685bb311ffc488cf3cb803804831728f5ebe5c8ea7fdd10cfc252dbd7a6f\",\"tipIndex\":3}",
+      "signature": "8S4u5HgB/LyI+tbQI7Siv1vuyooksg0VzmH/l8elkwpghxw5ZEGXqdU8N58hA6wX1ZeTjNu5Pkmj9M0q/QxfBg=="
+    },
+    {
+      "checkpointSeq": 5,
+      "ledgerLength": 5,
+      "tipIndex": 4,
+      "tipHash": "1413ef97b39261091c49a35e760f2a99069c5f50ea1e809b12013ea674f099c5",
+      "timestamp": 1794779878388,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":5,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":5,\"timestamp\":1794779878388,\"tipHash\":\"1413ef97b39261091c49a35e760f2a99069c5f50ea1e809b12013ea674f099c5\",\"tipIndex\":4}",
+      "signature": "q2ncEJfses2tPsb3WzIBhY1G1n9tth1fIGjATdcmt+X/ZF4og6MyJqZxQB5G+ZkPWVBAfblFI8nhCskt5j4LDg=="
+    },
+    {
+      "checkpointSeq": 6,
+      "ledgerLength": 6,
+      "tipIndex": 5,
+      "tipHash": "098e351c422632877ec491250628082e188e0fabca1ca0339e407f4fad6a192f",
+      "timestamp": 1794779894214,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":6,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":6,\"timestamp\":1794779894214,\"tipHash\":\"098e351c422632877ec491250628082e188e0fabca1ca0339e407f4fad6a192f\",\"tipIndex\":5}",
+      "signature": "QeK9t/1kwrG2ZvHgJ3e1g6Gpx3A6gpWe1hETQzxGXOvjuJcnCgi+3aJTJW7UA6iH3oj+TTN+m8yNv8X8ZOqxBw=="
+    },
+    {
+      "checkpointSeq": 7,
+      "ledgerLength": 7,
+      "tipIndex": 6,
+      "tipHash": "cb588d323c9837e5c1d4a26046a482482734954f30ca200681a51f33d372908a",
+      "timestamp": 1794779913451,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":7,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":7,\"timestamp\":1794779913451,\"tipHash\":\"cb588d323c9837e5c1d4a26046a482482734954f30ca200681a51f33d372908a\",\"tipIndex\":6}",
+      "signature": "Gu4SKUXiiIOwqdrJ8X1eNCpPGN5vKAR5GNknOYAGMvpBhNbsRR6JCpcplGXG2K36isrosVTGk/PTc8MfYZdtDQ=="
+    },
+    {
+      "checkpointSeq": 8,
+      "ledgerLength": 8,
+      "tipIndex": 7,
+      "tipHash": "84d562832b1611df94a6c746aea7be54e488ef1689ce3ab9a93dc8ae590e7952",
+      "timestamp": 1794779913880,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":8,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":8,\"timestamp\":1794779913880,\"tipHash\":\"84d562832b1611df94a6c746aea7be54e488ef1689ce3ab9a93dc8ae590e7952\",\"tipIndex\":7}",
+      "signature": "/Hc2G3ZyromEF+uXXJ1XSBboLEVKvPFKkPbmL29gjP/i+ofs/KwBNgkslN9dkDkrh7rTr/WchuTPnIHtWOSwCg=="
+    }
+  ],
+  "recoveryQueuePaths": [],
+  "recoveryRecords": [],
+  "transactionsById": {
+    "tx_http_1": {
+      "transactionId": "tx_http_1",
+      "workspaceId": "ws_unified_one",
+      "payloadDigest": "8a2e1332d1d96a7d30eab7f03c9e5b3363f4f682a3395d19ab26adf18e38a4f2",
+      "status": "authorized",
+      "commitHash": null,
+      "treeDigest": "90e854e1edb94f3a45bafac3a3979599641c1dd748dd502e42690bb0a0e18193",
+      "linearizationSeq": 2,
+      "receipt": {
+        "receiptId": "rcpt_a0ab8c40289788ec",
+        "keyId": "key_5170815980fe",
+        "action": "server_ingest_receipt",
+        "canonicalPayload": "{\"claimLevel\":\"untested\",\"claimStatus\":\"untested\",\"commitHash\":null,\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":2,\"fileCount\":1,\"linearizationSeq\":2,\"permitId\":\"perm_2b285969cc8000e0\",\"transactionId\":\"tx_http_1\",\"trustSource\":\"external_user_drop\",\"uploadedTreeDigest\":\"90e854e1edb94f3a45bafac3a3979599641c1dd748dd502e42690bb0a0e18193\",\"workspaceId\":\"ws_unified_one\"}",
+        "signature": "7AcXJiGdbW/2fXjK5H1DcHhmIbS3KIS4/j5Ne1oXimKI+u/kCwN88+vUR2RcpaujpLUDfubfRmVspL6XfbmzBQ==",
+        "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAdZMHBCmKpRnDDCQjL/qgfVJiMCPeWzoMk/AXfD0cPMI=\n-----END PUBLIC KEY-----\n",
+        "algorithm": "Ed25519",
+        "linearizationSeq": 2
+      },
+      "createdAt": 1794779878265
+    },
+    "tx_1794779913443_e9fc6deb": {
+      "transactionId": "tx_1794779913443_e9fc6deb",
+      "workspaceId": "ws_unified_one",
+      "payloadDigest": "6cef81c9b2c93f323cbb69fcf899241a78d5433ce3829dec95f8845743958e5d",
+      "status": "authorized",
+      "commitHash": null,
+      "treeDigest": "b58710bbfddac5a1e205ecccd97043b2712638e20f331ce1ff11bca2bf427b3f",
+      "linearizationSeq": 2,
+      "receipt": {
+        "receiptId": "rcpt_ac1f14249fa6340b",
+        "keyId": "key_6d18b20aed15",
+        "action": "server_ingest_receipt",
+        "canonicalPayload": "{\"claimLevel\":\"untested\",\"claimStatus\":\"untested\",\"commitHash\":null,\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":2,\"fileCount\":1,\"linearizationSeq\":2,\"permitId\":\"perm_2b285969cc8000e0\",\"transactionId\":\"tx_1794779913443_e9fc6deb\",\"trustSource\":\"external_user_drop\",\"uploadedTreeDigest\":\"b58710bbfddac5a1e205ecccd97043b2712638e20f331ce1ff11bca2bf427b3f\",\"workspaceId\":\"ws_unified_one\"}",
+        "signature": "1cxqmVSRI8YGKzm+S20u7xqra4uQ/GYMUAB1WezqqypvVYqaLcFVD6EXMsjgAoVwv7YC5NEU8xe7zesgRzZ4Bg==",
+        "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+        "algorithm": "Ed25519",
+        "linearizationSeq": 2
+      },
+      "createdAt": 1794779913451
+    }
+  }
+}

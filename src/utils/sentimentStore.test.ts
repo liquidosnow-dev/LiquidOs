@@ -10,9 +10,11 @@ import {
   resolveSentimentTelemetryUrl,
 } from '../services/sentimentStore';
 import {
+  computeSessionStatsSnapshot,
   dispatchAggregatedSentiment,
   getTelemetryEndpointFromProcessOrVite,
 } from '../hooks/useAssistantSentiment';
+import { detectStandaloneDisplayMode } from '../hooks/usePWAInstall';
 
 describe('Sentiment Analytics & Metrics Store', () => {
   const originalTelemetryEnv = process.env.VITE_SENTIMENT_TELEMETRY_URL;
@@ -61,7 +63,7 @@ describe('Sentiment Analytics & Metrics Store', () => {
     }
   });
 
-  it('computes correct aggregate metrics', () => {
+  it('computes correct aggregate metrics and session snapshots', () => {
     const metrics = computeSentimentMetrics(sampleRecords);
     expect(metrics.totalInteractions).toBe(3);
     expect(metrics.averageResponseTimeMs).toBe(633);
@@ -70,6 +72,12 @@ describe('Sentiment Analytics & Metrics Store', () => {
     expect(metrics.sentimentBreakdown.frustrated).toBe(1);
     expect(metrics.sentimentBreakdown.inquisitive).toBe(1);
     expect(metrics.sentimentBreakdown.neutral).toBe(0);
+
+    const sessionSnap = computeSessionStatsSnapshot(sampleRecords, Date.now() - 2500);
+    expect(sessionSnap.sessionInteractions).toBe(3);
+    expect(sessionSnap.sessionResolved).toBe(2);
+    expect(sessionSnap.sessionAverageResponseTimeMs).toBe(633);
+    expect(sessionSnap.sessionDurationMs).toBeGreaterThanOrEqual(2400);
   });
 
   it('handles empty interaction sets gracefully', () => {
@@ -77,6 +85,7 @@ describe('Sentiment Analytics & Metrics Store', () => {
     expect(metrics.totalInteractions).toBe(0);
     expect(metrics.averageResponseTimeMs).toBe(0);
     expect(metrics.resolutionRate).toBe(0);
+    expect(detectStandaloneDisplayMode()).toBe(false);
   });
 
   it('classifies prompt sentiment across frustrated, positive, inquisitive, and neutral signals', () => {
@@ -117,7 +126,7 @@ describe('Sentiment Analytics & Metrics Store', () => {
     ).toBeNull();
   });
 
-  it('posts aggregated sentiment metrics via background fetch on resolved and session_close triggers', async () => {
+  it('posts aggregated sentiment metrics via fetch or sendBeacon on resolved and session_close triggers', async () => {
     const saved = recordInteraction({
       promptLength: 18,
       sentiment: 'positive',
@@ -126,6 +135,7 @@ describe('Sentiment Analytics & Metrics Store', () => {
       resolved: true,
     });
     const summary = computeSentimentMetrics([saved]);
+    const sessionSnap = computeSessionStatsSnapshot([saved], Date.now() - 500);
 
     const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', fetchSpy);
@@ -135,8 +145,12 @@ describe('Sentiment Analytics & Metrics Store', () => {
 
     process.env.VITE_SENTIMENT_TELEMETRY_URL = 'https://telemetry.liquidos.dev/v1/ingest';
 
-    expect(await dispatchAggregatedSentiment('resolved', saved)).toBe(true);
-    expect(await dispatchAggregatedSentiment('session_close', saved)).toBe(true);
+    expect(await dispatchAggregatedSentiment('resolved', saved, undefined, sessionSnap, false)).toBe(
+      true
+    );
+    expect(
+      await dispatchAggregatedSentiment('session_close', saved, undefined, sessionSnap, false)
+    ).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
 
     const [url1, init1] = fetchSpy.mock.calls[0];
@@ -147,14 +161,24 @@ describe('Sentiment Analytics & Metrics Store', () => {
     expect(body1.event).toBe('assistant_interaction');
     expect(body1.trigger).toBe('resolved');
     expect(body1.summary.totalInteractions).toBe(1);
-    expect(body1.summary.resolutionRate).toBe(1);
+    expect(body1.sessionStats.sessionInteractions).toBe(1);
 
     const [, init2] = fetchSpy.mock.calls[1];
     const body2 = JSON.parse(init2.body);
     expect(body2.event).toBe('assistant_session_summary');
     expect(body2.trigger).toBe('session_close');
 
+    // Verify sendBeacon fast path when available during tab close
+    const sendBeaconSpy = vi.fn().mockReturnValue(true);
+    vi.stubGlobal('navigator', { sendBeacon: sendBeaconSpy });
+    expect(
+      await dispatchAggregatedSentiment('session_close', saved, undefined, sessionSnap, true)
+    ).toBe(true);
+    expect(sendBeaconSpy).toHaveBeenCalledTimes(1);
+
     fetchSpy.mockRejectedValueOnce(new Error('offline'));
-    expect(await dispatchAggregatedSentiment('session_close', saved)).toBe(false);
+    expect(
+      await dispatchAggregatedSentiment('session_close', saved, undefined, sessionSnap, false)
+    ).toBe(false);
   });
 });

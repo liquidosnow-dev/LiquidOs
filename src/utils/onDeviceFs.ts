@@ -41,7 +41,12 @@ const IDB_DB_NAME = 'liquidos_ondevice_fs_v1';
 const IDB_STORE_NAME = 'directory_handles';
 const IDB_HANDLE_KEY = 'primary_workspace_dir';
 const OPFS_WORKSPACE_FOLDER = 'liquidos-one-workspace';
-const MAX_READABLE_FILE_BYTES = 1024 * 1024; // 1 MB safeguard for text editor sync
+export const MAX_READABLE_FILE_BYTES = 1024 * 1024; // 1 MB safeguard per file
+export const MAX_BATCH_BYTES = 10 * 1024 * 1024; // 10 MB cumulative batch safeguard
+export const MAX_DROP_DEPTH = 16;
+export const MAX_TRAVERSAL_ENTRIES = 1000;
+export const MAX_PATH_LENGTH = 1024;
+export const MAX_SEGMENT_LENGTH = 255;
 
 const IGNORED_DIRS = new Set([
   'node_modules',
@@ -131,6 +136,94 @@ export function normalizeRelativePath(rawPath: string): string | null {
     }
   }
   return segments.join('/');
+}
+
+export function normalizeCollisionKey(filePath: string): string {
+  return filePath.normalize('NFC').toLowerCase();
+}
+
+/**
+ * Strict ingest path validator (ING-01):
+ * Rejects absolute Unix/Windows/UNC paths, drive letters, URI schemes,
+ * control/bidi characters, NUL bytes, arbitrary-depth percent-encoded traversal sequences,
+ * and oversize path/segment lengths while normalizing NFC Unicode and safe Windows separators.
+ */
+export function validateIngestPath(
+  rawPath: string
+): { ok: true; path: string } | { ok: false; reason: string } {
+  if (typeof rawPath !== 'string') {
+    return { ok: false, reason: 'Path must be a string' };
+  }
+  const trimmed = rawPath.trim();
+  if (!trimmed) {
+    return { ok: false, reason: 'Empty relative path' };
+  }
+  if (trimmed.length > MAX_PATH_LENGTH * 2) {
+    return { ok: false, reason: `Path exceeds maximum length (${MAX_PATH_LENGTH} chars)` };
+  }
+  if (
+    trimmed.includes('\0') ||
+    /[\u0000-\u001F\u007F\u200E\u200F\u202A-\u202E\u2066-\u2069]/.test(trimmed) ||
+    /%(?:25)*00/i.test(trimmed)
+  ) {
+    return { ok: false, reason: 'Control, bidi, or null byte rejected in path' };
+  }
+  if (/%(?:25)*(?:2e|2f|5c)/i.test(trimmed)) {
+    return { ok: false, reason: 'Encoded traversal or separator sequence rejected' };
+  }
+
+  // Iterative percent-decoding check up to 8 layers against nested encodings
+  let candidate = trimmed;
+  for (let pass = 0; pass < 8 && candidate.includes('%'); pass++) {
+    try {
+      const decoded = decodeURIComponent(candidate);
+      if (decoded === candidate) break;
+      candidate = decoded;
+      if (
+        candidate.includes('\0') ||
+        /^(?:\/+|\\+|[A-Za-z]:|[a-z][a-z0-9+.-]*:\/\/)/i.test(candidate) ||
+        candidate
+          .replace(/\\/g, '/')
+          .split('/')
+          .some((seg) => seg === '.' || seg === '..')
+      ) {
+        return { ok: false, reason: 'Encoded traversal or separator sequence rejected' };
+      }
+    } catch {
+      return { ok: false, reason: 'Malformed percent-encoding rejected in path' };
+    }
+  }
+
+  const nfc = trimmed.normalize('NFC');
+  if (/^(?:\/+|\\+|[A-Za-z]:|[a-z][a-z0-9+.-]*:\/\/)/i.test(nfc)) {
+    return { ok: false, reason: 'Absolute path or drive prefix rejected' };
+  }
+
+  const slashNormalized = nfc.replace(/\\/g, '/');
+  const segments = slashNormalized.split('/').filter((s) => s.length > 0);
+  if (segments.length === 0) {
+    return { ok: false, reason: 'Empty relative path' };
+  }
+
+  const encoder = new TextEncoder();
+  for (const seg of segments) {
+    if (seg === '.' || seg === '..') {
+      return { ok: false, reason: 'Path traversal segment rejected' };
+    }
+    if (seg.length > MAX_SEGMENT_LENGTH || encoder.encode(seg).byteLength > MAX_SEGMENT_LENGTH) {
+      return {
+        ok: false,
+        reason: `Filename segment exceeds ${MAX_SEGMENT_LENGTH} character/byte limit`,
+      };
+    }
+  }
+
+  const joined = segments.join('/');
+  if (joined.length > MAX_PATH_LENGTH) {
+    return { ok: false, reason: `Path exceeds ${MAX_PATH_LENGTH} character limit` };
+  }
+
+  return { ok: true, path: joined };
 }
 
 export function inferLanguageFromPath(filePath: string): ProjectFile['language'] {
@@ -372,15 +465,43 @@ export async function readDirectoryHandleTree(
   return results.sort((a, b) => a.path.localeCompare(b.path));
 }
 
+export type WritePhase = 'pre_open' | 'pre_writable' | 'pre_write' | 'pre_close';
+
+export interface DirectoryWriteOptions {
+  signal?: AbortSignal;
+  beforeEachWrite?: (path: string) => void | Promise<void>;
+  beforePhase?: (phase: WritePhase, path: string) => void | Promise<void>;
+}
+
 export async function writeSingleFileToDirectoryHandle(
   rootHandle: any,
   rawPath: string,
-  content: string
+  content: string,
+  options?: DirectoryWriteOptions
 ): Promise<void> {
-  const norm = normalizeRelativePath(rawPath);
-  if (!norm) {
-    throw new Error(`Unsafe or empty file path rejected: "${rawPath}"`);
+  const pathCheck = validateIngestPath(rawPath);
+  if (!pathCheck.ok) {
+    throw new Error(`Unsafe or empty file path rejected: "${rawPath}" (${pathCheck.reason})`);
   }
+  const norm = pathCheck.path;
+
+  const assertGate = async (phase: WritePhase) => {
+    if (options?.signal?.aborted) {
+      throw new Error(`GLOBAL-MODE-001: Write operation aborted prior to ${phase}.`);
+    }
+    if (phase === 'pre_open' && options?.beforeEachWrite) {
+      await options.beforeEachWrite(norm);
+    }
+    if (options?.beforePhase) {
+      await options.beforePhase(phase, norm);
+    }
+    if (options?.signal?.aborted) {
+      throw new Error(`GLOBAL-MODE-001: Write operation aborted at ${phase}.`);
+    }
+  };
+
+  await assertGate('pre_open');
+
   const parts = norm.split('/');
   const fileName = parts.pop()!;
   let currentDir = rootHandle;
@@ -390,31 +511,86 @@ export async function writeSingleFileToDirectoryHandle(
   }
 
   const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
+  await assertGate('pre_writable');
+
   const writable = await fileHandle.createWritable();
+  let closed = false;
   try {
+    await assertGate('pre_write');
     await writable.write(content);
-  } finally {
+    await assertGate('pre_close');
     await writable.close();
+    closed = true;
+  } catch (err) {
+    if (!closed) {
+      if (typeof writable.abort === 'function') {
+        await writable.abort().catch(() => {});
+      }
+    }
+    throw err;
   }
+}
+
+export interface DirectoryWriteResult {
+  writtenCount: number;
+  writtenPaths: string[];
+  failedFiles: { path: string; reason: string }[];
+  aborted: boolean;
+  abortedPaths: string[];
+  errors: string[];
 }
 
 export async function writeFilesToDirectoryHandle(
   rootHandle: any,
-  files: ProjectFile[]
-): Promise<{ writtenCount: number; errors: string[] }> {
+  files: ProjectFile[],
+  options?: DirectoryWriteOptions
+): Promise<DirectoryWriteResult> {
   let writtenCount = 0;
+  const writtenPaths: string[] = [];
+  const failedFiles: { path: string; reason: string }[] = [];
+  const abortedPaths: string[] = [];
   const errors: string[] = [];
+  let aborted = false;
 
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (options?.signal?.aborted) {
+      aborted = true;
+      for (let j = i; j < files.length; j++) {
+        abortedPaths.push(files[j].path);
+      }
+      errors.push('Write operation aborted by control plane.');
+      break;
+    }
+
     try {
-      await writeSingleFileToDirectoryHandle(rootHandle, file.path, file.content);
+      await writeSingleFileToDirectoryHandle(rootHandle, file.path, file.content, options);
       writtenCount += 1;
+      writtenPaths.push(file.path);
     } catch (err: any) {
-      errors.push(`${file.path}: ${err?.message || 'write failed'}`);
+      const reason = err?.message || 'write failed';
+      if (
+        String(reason).includes('LOCKDOWN') ||
+        String(reason).includes('GLOBAL-MODE-001') ||
+        String(reason).includes('IAM-001') ||
+        String(reason).includes('revoked') ||
+        String(reason).includes('Stale') ||
+        String(reason).includes('aborted')
+      ) {
+        aborted = true;
+        abortedPaths.push(file.path);
+        for (let j = i + 1; j < files.length; j++) {
+          abortedPaths.push(files[j].path);
+        }
+        errors.push(`${file.path}: ${reason}`);
+        break;
+      }
+      failedFiles.push({ path: file.path, reason });
+      errors.push(`${file.path}: ${reason}`);
     }
   }
 
-  return { writtenCount, errors };
+  return { writtenCount, writtenPaths, failedFiles, aborted, abortedPaths, errors };
 }
 
 export async function deleteEntryFromDirectoryHandle(
@@ -474,4 +650,452 @@ export async function readWebkitDirectoryFileList(
     rootFolderName,
     files: files.sort((a, b) => a.path.localeCompare(b.path)),
   };
+}
+
+export interface DropSkippedFile {
+  name: string;
+  reason: string;
+}
+
+export interface DropImportResult {
+  files: ProjectFile[];
+  skipped: DropSkippedFile[];
+}
+
+function resolveDropTargetPath(
+  rawRelativePath: string,
+  targetDir = ''
+): { ok: true; path: string } | { ok: false; reason: string } {
+  const fileCheck = validateIngestPath(rawRelativePath);
+  if (!fileCheck.ok) return fileCheck;
+
+  const trimmedDir = typeof targetDir === 'string' ? targetDir.trim() : '';
+  if (!trimmedDir) return fileCheck;
+
+  const dirCheck = validateIngestPath(trimmedDir);
+  if (!dirCheck.ok) {
+    return { ok: false, reason: `Invalid target directory: ${dirCheck.reason}` };
+  }
+
+  const combined = validateIngestPath(`${dirCheck.path}/${fileCheck.path}`);
+  if (!combined.ok) return combined;
+  if (combined.path !== dirCheck.path && !combined.path.startsWith(`${dirCheck.path}/`)) {
+    return { ok: false, reason: 'Path escaped designated destination directory' };
+  }
+  return combined;
+}
+
+export interface DropImportOptions {
+  existingWorkspacePaths?: string[];
+  signal?: AbortSignal;
+}
+
+function hasDisallowedMimeType(mime: string | undefined): boolean {
+  if (!mime || typeof mime !== 'string') return false;
+  const lower = mime.trim().toLowerCase();
+  if (!lower) return false;
+  if (lower.startsWith('text/')) return false;
+  if (lower === 'image/svg+xml') return false;
+  if (
+    lower === 'application/json' ||
+    lower === 'application/javascript' ||
+    lower === 'application/x-javascript' ||
+    lower === 'application/typescript' ||
+    lower === 'application/xml' ||
+    lower === 'application/toml' ||
+    lower === 'application/yaml' ||
+    lower === 'application/x-yaml'
+  ) {
+    return false;
+  }
+  return (
+    lower.startsWith('image/') ||
+    lower.startsWith('audio/') ||
+    lower.startsWith('video/') ||
+    lower.startsWith('font/') ||
+    lower === 'application/pdf' ||
+    lower === 'application/zip' ||
+    lower === 'application/gzip' ||
+    lower === 'application/octet-stream' ||
+    lower === 'application/wasm' ||
+    lower === 'application/x-msdownload' ||
+    lower === 'application/x-executable'
+  );
+}
+
+function hasBinaryMagicHeader(bytes: Uint8Array): boolean {
+  if (bytes.length >= 4) {
+    // PNG: 89 50 4E 47
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return true;
+    // PDF: %PDF
+    if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return true;
+    // ZIP: PK\x03\x04
+    if (bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) return true;
+    // ELF: \x7fELF
+    if (bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) return true;
+    // WASM: \x00asm
+    if (bytes[0] === 0x00 && bytes[1] === 0x61 && bytes[2] === 0x73 && bytes[3] === 0x6d) return true;
+    // GIF8
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return true;
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return true; // JPEG
+  }
+  return false;
+}
+
+async function decodeAndValidateTextFile(
+  file: File
+): Promise<{ ok: true; content: string; byteLength: number } | { ok: false; reason: string }> {
+  let content: string;
+  let byteLength: number;
+
+  if (typeof (file as any).arrayBuffer === 'function') {
+    const buf = await (file as any).arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    byteLength = bytes.byteLength;
+    if (byteLength > MAX_READABLE_FILE_BYTES) {
+      return { ok: false, reason: `Decoded payload exceeds ${formatBytes(MAX_READABLE_FILE_BYTES)} text limit` };
+    }
+    if (bytes.includes(0)) {
+      return { ok: false, reason: 'Binary NUL byte payload rejected' };
+    }
+    if (hasBinaryMagicHeader(bytes)) {
+      return { ok: false, reason: 'Binary magic header signature rejected' };
+    }
+    try {
+      content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      return { ok: false, reason: 'Invalid UTF-8 byte sequence rejected' };
+    }
+  } else {
+    const raw = await file.text();
+    if (typeof raw !== 'string') {
+      return { ok: false, reason: 'Unable to decode file as text' };
+    }
+    content = raw;
+    byteLength = new TextEncoder().encode(content).byteLength;
+    if (byteLength > MAX_READABLE_FILE_BYTES) {
+      return { ok: false, reason: `Decoded payload exceeds ${formatBytes(MAX_READABLE_FILE_BYTES)} text limit` };
+    }
+    if (content.includes('\u0000')) {
+      return { ok: false, reason: 'Binary NUL byte payload rejected' };
+    }
+  }
+
+  // Reject non-whitespace C0 control characters (binary content disguised in UTF-8 text)
+  if (/[\u0001-\u0008\u000B\u000C\u000E-\u001F]/.test(content)) {
+    return { ok: false, reason: 'Binary control character payload rejected' };
+  }
+
+  return { ok: true, content, byteLength };
+}
+
+export async function readDroppedFiles(
+  fileList: FileList | File[],
+  targetDir = '',
+  maxFiles = 200,
+  preSkipped: DropSkippedFile[] = [],
+  options?: DropImportOptions
+): Promise<DropImportResult> {
+  const items = Array.from(fileList as Iterable<File>);
+  const acceptedFiles: ProjectFile[] = [];
+  const seenExact = new Set<string>();
+  const seenLower = new Set<string>();
+  const skipped: DropSkippedFile[] = [...preSkipped];
+  let totalAcceptedBytes = 0;
+
+  const existingCollisionMap = new Map<string, string>();
+  if (options?.existingWorkspacePaths) {
+    for (const wp of options.existingWorkspacePaths) {
+      existingCollisionMap.set(normalizeCollisionKey(wp), wp.normalize('NFC'));
+    }
+  }
+
+  for (const file of items) {
+    if (options?.signal?.aborted) {
+      skipped.push({
+        name: file?.name || '(aborted)',
+        reason: 'File ingestion aborted by control plane.',
+      });
+      continue;
+    }
+
+    if (!file || typeof file !== 'object') {
+      skipped.push({ name: '(invalid)', reason: 'Malformed file metadata entry' });
+      continue;
+    }
+
+    if (acceptedFiles.length >= maxFiles) {
+      skipped.push({
+        name: file.name || '(unnamed)',
+        reason: `Batch limit (${maxFiles} files) reached`,
+      });
+      continue;
+    }
+
+    const rawRel = (file as any).webkitRelativePath || file.name;
+    const pathCheck = resolveDropTargetPath(rawRel, targetDir);
+    if (!pathCheck.ok) {
+      skipped.push({ name: String(rawRel || file.name || '(unnamed)'), reason: pathCheck.reason });
+      continue;
+    }
+    const relPath = pathCheck.path;
+
+    // Deterministic duplicate, Unicode NFC, and case-insensitive collision rejection (ING-03)
+    if (seenExact.has(relPath)) {
+      skipped.push({ name: relPath, reason: 'Duplicate relative path in batch (first entry kept)' });
+      continue;
+    }
+    const lowerKey = normalizeCollisionKey(relPath);
+    if (seenLower.has(lowerKey)) {
+      skipped.push({ name: relPath, reason: 'Case-insensitive or Unicode path collision in batch' });
+      continue;
+    }
+    const existingExact = existingCollisionMap.get(lowerKey);
+    if (existingExact && existingExact !== relPath) {
+      skipped.push({
+        name: relPath,
+        reason: `Case-insensitive or Unicode path collision with existing workspace file "${existingExact}"`,
+      });
+      continue;
+    }
+
+    const segments = relPath.split('/');
+    const fileName = segments[segments.length - 1];
+    if (segments.slice(0, -1).some((dir) => shouldIgnoreEntry(dir, 'directory'))) {
+      skipped.push({ name: relPath, reason: 'Ignored build or vendor directory' });
+      continue;
+    }
+
+    if (typeof file.size !== 'number' || !Number.isFinite(file.size) || file.size < 0) {
+      skipped.push({ name: relPath, reason: 'Malformed or non-finite file size metadata' });
+      continue;
+    }
+
+    if (file.size > MAX_READABLE_FILE_BYTES) {
+      skipped.push({
+        name: relPath,
+        reason: `Exceeds ${formatBytes(MAX_READABLE_FILE_BYTES)} text limit`,
+      });
+      continue;
+    }
+
+    // Pre-read cumulative byte check before allocating text/buffer memory
+    if (totalAcceptedBytes + file.size > MAX_BATCH_BYTES) {
+      skipped.push({
+        name: relPath,
+        reason: `Cumulative batch limit (${formatBytes(MAX_BATCH_BYTES)}) reached prior to read`,
+      });
+      continue;
+    }
+
+    if (hasDisallowedMimeType((file as any).type)) {
+      skipped.push({ name: relPath, reason: `Unsupported binary MIME type (${(file as any).type})` });
+      continue;
+    }
+
+    if (shouldIgnoreEntry(fileName, 'file', file.size)) {
+      skipped.push({ name: relPath, reason: 'Unsupported binary or non-text file extension' });
+      continue;
+    }
+
+    try {
+      const decoded = await decodeAndValidateTextFile(file);
+      if (!decoded.ok) {
+        skipped.push({ name: relPath, reason: decoded.reason });
+        continue;
+      }
+      if (totalAcceptedBytes + decoded.byteLength > MAX_BATCH_BYTES) {
+        skipped.push({
+          name: relPath,
+          reason: `Cumulative batch limit (${formatBytes(MAX_BATCH_BYTES)}) reached`,
+        });
+        continue;
+      }
+
+      seenExact.add(relPath);
+      seenLower.add(lowerKey);
+      totalAcceptedBytes += decoded.byteLength;
+      acceptedFiles.push({
+        name: fileName,
+        path: relPath,
+        language: inferLanguageFromPath(relPath),
+        content: decoded.content,
+        lastModified: Number.isFinite(file.lastModified) && file.lastModified > 0 ? file.lastModified : Date.now(),
+      });
+    } catch {
+      skipped.push({ name: relPath, reason: 'Unable to read file as UTF-8 text' });
+    }
+  }
+
+  return {
+    files: acceptedFiles.sort((a, b) => a.path.localeCompare(b.path)),
+    skipped,
+  };
+}
+
+function readEntryAsFile(entry: any): Promise<File> {
+  return new Promise((resolve, reject) => {
+    entry.file(resolve, reject);
+  });
+}
+
+function readAllDirectoryEntries(reader: any, maxEntries: number): Promise<{ entries: any[]; truncated: boolean }> {
+  return new Promise((resolve, reject) => {
+    const all: any[] = [];
+    function nextBatch() {
+      reader.readEntries(
+        (batch: any[]) => {
+          if (!batch || batch.length === 0) {
+            resolve({ entries: all, truncated: false });
+          } else {
+            all.push(...batch);
+            if (all.length >= maxEntries) {
+              resolve({ entries: all.slice(0, maxEntries), truncated: true });
+            } else {
+              nextBatch();
+            }
+          }
+        },
+        reject
+      );
+    }
+    nextBatch();
+  });
+}
+
+export async function readDroppedDataTransfer(
+  dataTransfer: DataTransfer,
+  targetDir = '',
+  maxFiles = 200,
+  maxDepth = MAX_DROP_DEPTH,
+  maxVisitedEntries = Math.min(Math.max(maxFiles * 5, 200), MAX_TRAVERSAL_ENTRIES),
+  options?: DropImportOptions
+): Promise<DropImportResult> {
+  if (!dataTransfer) {
+    return { files: [], skipped: [{ name: '(drop)', reason: 'Missing DataTransfer payload' }] };
+  }
+  if (options?.signal?.aborted) {
+    return {
+      files: [],
+      skipped: [{ name: '(drop)', reason: 'Drop traversal aborted by control plane' }],
+    };
+  }
+
+  const dtItems = dataTransfer.items ? Array.from(dataTransfer.items) : [];
+  const entries = dtItems
+    .map((item) => (item && typeof (item as any).webkitGetAsEntry === 'function' ? (item as any).webkitGetAsEntry() : null))
+    .filter(Boolean);
+
+  if (entries.length === 0) {
+    return readDroppedFiles(dataTransfer.files || [], targetDir, maxFiles, [], options);
+  }
+
+  const collectedFiles: File[] = [];
+  const traversalSkipped: DropSkippedFile[] = [];
+  let visitedEntries = 0;
+
+  async function traverseEntry(entry: any, prefix: string, depth: number): Promise<void> {
+    if (options?.signal?.aborted) {
+      return;
+    }
+    if (!entry || typeof entry.name !== 'string' || !entry.name.trim()) {
+      traversalSkipped.push({ name: '(malformed)', reason: 'Malformed filesystem entry' });
+      return;
+    }
+
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    visitedEntries += 1;
+    if (visitedEntries > maxVisitedEntries) {
+      traversalSkipped.push({
+        name: rel,
+        reason: `Directory traversal cap (${maxVisitedEntries} entries) exceeded`,
+      });
+      return;
+    }
+
+    if (depth > maxDepth) {
+      traversalSkipped.push({
+        name: rel,
+        reason: `Directory nesting depth exceeds ${maxDepth} levels`,
+      });
+      return;
+    }
+
+    if (collectedFiles.length >= maxFiles) {
+      traversalSkipped.push({ name: rel, reason: `Batch limit (${maxFiles} files) reached` });
+      return;
+    }
+
+    if (entry.isFile) {
+      try {
+        const file = await readEntryAsFile(entry);
+        if (options?.signal?.aborted) return;
+        Object.defineProperty(file, 'webkitRelativePath', {
+          value: rel,
+          configurable: true,
+        });
+        collectedFiles.push(file);
+      } catch {
+        traversalSkipped.push({ name: rel, reason: 'Failed to read dropped file entry' });
+      }
+    } else if (entry.isDirectory) {
+      if (shouldIgnoreEntry(entry.name, 'directory')) {
+        traversalSkipped.push({ name: rel, reason: 'Ignored build or vendor directory' });
+        return;
+      }
+      try {
+        const reader = entry.createReader();
+        const { entries: children, truncated } = await readAllDirectoryEntries(
+          reader,
+          Math.max(1, maxVisitedEntries - visitedEntries + 1)
+        );
+        if (truncated) {
+          traversalSkipped.push({
+            name: rel,
+            reason: `Directory entry count exceeds traversal limit (${maxVisitedEntries})`,
+          });
+        }
+        for (const child of children) {
+          if (options?.signal?.aborted) {
+            traversalSkipped.push({ name: rel, reason: 'Drop traversal aborted by control plane' });
+            break;
+          }
+          if (visitedEntries >= maxVisitedEntries || collectedFiles.length >= maxFiles) {
+            traversalSkipped.push({
+              name: child?.name ? `${rel}/${child.name}` : rel,
+              reason:
+                collectedFiles.length >= maxFiles
+                  ? `Batch limit (${maxFiles} files) reached`
+                  : `Directory traversal cap (${maxVisitedEntries} entries) exceeded`,
+            });
+            break;
+          }
+          await traverseEntry(child, rel, depth + 1);
+        }
+      } catch {
+        traversalSkipped.push({ name: rel, reason: 'Failed to enumerate dropped directory' });
+      }
+    }
+  }
+
+  for (const entry of entries) {
+    if (options?.signal?.aborted) break;
+    if (visitedEntries >= maxVisitedEntries || collectedFiles.length >= maxFiles) break;
+    await traverseEntry(entry, '', 0);
+  }
+
+  if (options?.signal?.aborted) {
+    return {
+      files: [],
+      skipped: [...traversalSkipped, { name: '(drop)', reason: 'Drop ingestion aborted by control plane' }],
+    };
+  }
+
+  if (collectedFiles.length === 0 && traversalSkipped.length === 0 && dataTransfer.files?.length > 0) {
+    return readDroppedFiles(dataTransfer.files, targetDir, maxFiles, [], options);
+  }
+
+  return readDroppedFiles(collectedFiles, targetDir, maxFiles, traversalSkipped, options);
 }

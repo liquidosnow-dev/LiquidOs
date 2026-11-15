@@ -4,13 +4,27 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Project, ProjectFile, ModelOption, Collaborator, ModelHyperparameters, ChatMessage, ToolCall } from './types';
+import { AuditLedgerEntry, Project, ProjectFile, ModelOption, Collaborator, ModelHyperparameters, ChatMessage, ToolCall } from './types';
 import { TEMPLATES, AppTemplate } from './services/templates';
 import { useAssistantSentiment } from './hooks/useAssistantSentiment';
 import { hydrateVectorVault, similaritySearch } from './services/vectorStore';
 import { generateDeterministicEmbedding } from './services/snapshotPipeline';
-import { createCommit, rollbackToCommit } from './utils/versionControl';
+import { createCommit, rollbackToCommit, verifyCommitIntegrity } from './utils/versionControl';
 import { extractFilesFromResponse, safeEvaluateMath } from './utils/toolExecutor';
+import {
+  ControlPlaneState,
+  SnapshotValidationReport,
+  WatchVerificationReport,
+  authorizeProtectedOperation,
+  createUninitializedControlPlaneState,
+  executeAtomicIngestionTransaction,
+  issueIngestionPermit,
+  loadRecoveryQueueFromStorage,
+  recordControlPlaneAudit,
+  saveRecoveryQueueToStorage,
+  syncFilesToDeviceWithRecovery,
+  transitionGlobalMode,
+} from './utils/ingestionControlPlane';
 import {
   detectFileSystemCapabilities,
   OnDeviceMountStatus,
@@ -186,28 +200,25 @@ export default function App() {
   const defaultTemplate = TEMPLATES[0]; // LiquidOS Mercury Vault
   const [project, setProject] = useState<Project>(() => {
     const initialFiles = JSON.parse(JSON.stringify(defaultTemplate.files));
-    const initialCommit = {
-      id: 'c_genesis',
-      message: 'Initial project blueprint: ' + defaultTemplate.name,
-      author: 'Mercy (User)',
-      timestamp: Date.now() - 3600000,
-      files: initialFiles,
-      hash: '8f43a9b2',
-      parentHash: null,
-    };
-    return {
+    const baseProj: Project = {
       id: 'proj_liquid_one',
       name: defaultTemplate.name,
       description: defaultTemplate.description,
       currentBranch: 'main',
       branches: {
-        main: { name: 'main', currentCommitId: 'c_genesis' },
+        main: { name: 'main', currentCommitId: '' },
       },
-      commits: [initialCommit],
+      commits: [],
       files: initialFiles,
       createdAt: Date.now() - 3600000,
       updatedAt: Date.now(),
     };
+    return createCommit(
+      baseProj,
+      'Initial project blueprint: ' + defaultTemplate.name,
+      'Mercy (User)',
+      { source: 'blueprint', claimStatus: 'untested' }
+    ).project;
   });
 
   const [activeFilePath, setActiveFilePath] = useState<string>(project.files[0]?.path || 'index.html');
@@ -239,10 +250,72 @@ export default function App() {
     total: number;
   } | null>(null);
 
-  // 2d. On-Device File System Connectivity State (Host Folder / OPFS / Folder Import)
+  // 2d. On-Device File System Connectivity & GLOBAL-MODE-001 Control Plane State
   const deviceCapabilities = useMemo(() => detectFileSystemCapabilities(), []);
   const deviceDirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+  const inFlightSyncAbortRef = useRef<Set<AbortController>>(new Set());
   const [deviceDiskFiles, setDeviceDiskFiles] = useState<ProjectFile[] | null>(null);
+  const [pendingSyncFiles, setPendingSyncFiles] = useState<ProjectFile[]>(() => {
+    const storedPaths = new Set(loadRecoveryQueueFromStorage());
+    return storedPaths.size > 0 ? project.files.filter((f) => storedPaths.has(f.path)) : [];
+  });
+  const [lastSnapshotValidation, setLastSnapshotValidation] =
+    useState<SnapshotValidationReport | null>(null);
+  const [lastWatchVerification, setLastWatchVerification] =
+    useState<WatchVerificationReport | null>(null);
+  const [auditLedger, setAuditLedger] = useState<AuditLedgerEntry[]>([]);
+  const [controlPlaneState, setControlPlaneState] = useState<ControlPlaneState>(() => {
+    const base = transitionGlobalMode(
+      createUninitializedControlPlaneState(),
+      'ACTIVE',
+      'Operator initialized active workspace session'
+    );
+    return issueIngestionPermit(base, {
+      subject: 'human:mercy',
+      scopes: ['workspace_ingest', 'workspace_commit', 'device_sync'],
+    }).state;
+  });
+  const controlPlaneRef = useRef<ControlPlaneState>(controlPlaneState);
+  controlPlaneRef.current = controlPlaneState;
+  const controlPlaneSessionTokenRef = useRef<string | null>(null);
+  const controlPlaneWorkspaceIdRef = useRef<string>('ws_unified_one');
+
+  const buildControlPlaneHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Workspace-Id': controlPlaneWorkspaceIdRef.current,
+      'X-Request-Nonce': `n_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`,
+    };
+    if (controlPlaneSessionTokenRef.current) {
+      headers.Authorization = `Bearer ${controlPlaneSessionTokenRef.current}`;
+    }
+    return headers;
+  };
+
+  const ensureControlPlaneSession = async () => {
+    if (controlPlaneSessionTokenRef.current) return controlPlaneSessionTokenRef.current;
+    try {
+      const sessRes = await fetch('/api/control-plane/session', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: 'human:mercy' }),
+      });
+      if (sessRes.ok) {
+        const sessJson = await sessRes.json().catch(() => null);
+        if (sessJson?.token) {
+          controlPlaneSessionTokenRef.current = sessJson.token;
+        }
+        if (sessJson?.claims?.workspaceId) {
+          controlPlaneWorkspaceIdRef.current = sessJson.claims.workspaceId;
+        }
+      }
+    } catch {
+      // Offline / fail-closed handled at action boundary
+    }
+    return controlPlaneSessionTokenRef.current;
+  };
+
   const [onDeviceMount, setOnDeviceMount] = useState<OnDeviceMountStatus>({
     mode: 'disconnected',
     mountName: null,
@@ -256,6 +329,125 @@ export default function App() {
     lastError: null,
   });
 
+  const persistRecoveryPaths = async (paths: string[]) => {
+    const localRes = saveRecoveryQueueToStorage(paths);
+    try {
+      await ensureControlPlaneSession();
+      await fetch('/api/control-plane/recovery-queue', {
+        method: 'POST',
+        credentials: 'include',
+        headers: buildControlPlaneHeaders(),
+        body: JSON.stringify({ paths }),
+      });
+    } catch {
+      // Server sync best-effort if unreachable
+    }
+    return localRes;
+  };
+
+  const handleTransitionGlobalMode = async (
+    nextMode: 'ACTIVE' | 'RESTRICTED' | 'LOCKDOWN',
+    reason?: string
+  ) => {
+    if (nextMode === 'LOCKDOWN' || nextMode === 'RESTRICTED') {
+      for (const ctrl of inFlightSyncAbortRef.current) {
+        ctrl.abort(`GLOBAL-MODE-001_${nextMode}`);
+      }
+      inFlightSyncAbortRef.current.clear();
+    }
+    const effectiveReason = reason || `Operator transitioned GLOBAL-MODE-001 to ${nextMode}`;
+    try {
+      await ensureControlPlaneSession();
+      const res = await fetch('/api/control-plane/mode', {
+        method: 'POST',
+        credentials: 'include',
+        headers: buildControlPlaneHeaders(),
+        body: JSON.stringify({ mode: nextMode, reason: effectiveReason, actor: 'human:mercy' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state) {
+          controlPlaneRef.current = data.state;
+          setControlPlaneState(data.state);
+          setAuditLedger((prev) =>
+            recordControlPlaneAudit(prev, 'global_mode_transition', nextMode, 'human:mercy', {
+              mode: data.state.mode,
+              epoch: data.state.epoch,
+              minFencingVersion: data.state.minFencingVersion,
+              linearizationSeq: data.linearizationSeq,
+              receiptId: data.receipt?.receiptId,
+              reason: data.state.lastTransitionReason,
+            })
+          );
+          return;
+        }
+      }
+    } catch {
+      // Fall through to local fail-closed transition if server is temporarily offline
+    }
+    const nextState = transitionGlobalMode(controlPlaneRef.current, nextMode, effectiveReason);
+    controlPlaneRef.current = nextState;
+    setControlPlaneState(nextState);
+    setAuditLedger((prev) =>
+      recordControlPlaneAudit(prev, 'global_mode_transition', nextMode, 'human:mercy', {
+        mode: nextState.mode,
+        epoch: nextState.epoch,
+        minFencingVersion: nextState.minFencingVersion,
+        revokedCount: nextState.revokedPermitIds.length,
+        reason: nextState.lastTransitionReason,
+      })
+    );
+  };
+
+  const handleIssueIngestionPermit = async () => {
+    if (controlPlaneRef.current.mode !== 'ACTIVE') return;
+    try {
+      await ensureControlPlaneSession();
+      const res = await fetch('/api/control-plane/permit', {
+        method: 'POST',
+        credentials: 'include',
+        headers: buildControlPlaneHeaders(),
+        body: JSON.stringify({
+          subject: 'human:mercy',
+          scopes: ['workspace_ingest', 'workspace_commit', 'device_sync'],
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state && data?.permit) {
+          controlPlaneRef.current = data.state;
+          setControlPlaneState(data.state);
+          setAuditLedger((prev) =>
+            recordControlPlaneAudit(prev, 'iam_permit_issued', data.permit.permitId, 'human:mercy', {
+              epoch: data.permit.epoch,
+              fencingVersion: data.permit.fencingVersion,
+              scopes: data.permit.scopes,
+              expiresAt: data.permit.expiresAt,
+              serverSignaturePresent: Boolean(data.permit.serverSignature),
+            })
+          );
+          return;
+        }
+      }
+    } catch {
+      // Fallback to local issuance only if offline
+    }
+    const { state: nextState, permit } = issueIngestionPermit(controlPlaneRef.current, {
+      subject: 'human:mercy',
+      scopes: ['workspace_ingest', 'workspace_commit', 'device_sync'],
+    });
+    controlPlaneRef.current = nextState;
+    setControlPlaneState(nextState);
+    setAuditLedger((prev) =>
+      recordControlPlaneAudit(prev, 'iam_permit_issued', permit.permitId, 'human:mercy', {
+        epoch: permit.epoch,
+        fencingVersion: permit.fencingVersion,
+        scopes: permit.scopes,
+        expiresAt: permit.expiresAt,
+      })
+    );
+  };
+
   const onDeviceDiff: DeviceSyncDiff | null = useMemo(() => {
     if (!deviceDiskFiles) return null;
     return computeSyncDiff(project.files, deviceDiskFiles);
@@ -264,11 +456,26 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [savedHandle, quota] = await Promise.all([
+      const [savedHandle, quota, cpRes] = await Promise.all([
         loadDirectoryHandle(),
         getStorageQuotaEstimate(),
+        fetch('/api/control-plane/state')
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        ensureControlPlaneSession(),
       ]);
       if (cancelled) return;
+      if (cpRes?.workspaceId) {
+        controlPlaneWorkspaceIdRef.current = cpRes.workspaceId;
+      }
+      if (cpRes?.state) {
+        controlPlaneRef.current = cpRes.state;
+        setControlPlaneState(cpRes.state);
+        if (Array.isArray(cpRes.recoveryQueuePaths) && cpRes.recoveryQueuePaths.length > 0) {
+          const queuedSet = new Set<string>(cpRes.recoveryQueuePaths);
+          setPendingSyncFiles(project.files.filter((f) => queuedSet.has(f.path)));
+        }
+      }
       setOnDeviceMount((prev) => ({
         ...prev,
         quota,
@@ -403,21 +610,100 @@ export default function App() {
     }
   };
 
-  const handlePushToDevice = async () => {
+  const handlePushToDevice = async (filesSubset?: ProjectFile[]) => {
     const handle = deviceDirHandleRef.current;
     if (!handle) return;
-    const res = await writeFilesToDirectoryHandle(handle, project.files);
-    const diskFiles = await refreshDeviceTree(handle);
-    setOnDeviceMount((prev) => ({
-      ...prev,
-      syncedFileCount: diskFiles.length,
-      lastSyncedAt: Date.now(),
-      lastNotice:
-        res.errors.length === 0
-          ? `Pushed ${res.writtenCount} workspace files to "${handle.name}".`
-          : `Pushed ${res.writtenCount} files (${res.errors.length} errors).`,
-      lastError: res.errors[0] || null,
-    }));
+    const targets = filesSubset && filesSubset.length > 0 ? filesSubset : project.files;
+
+    const controller = new AbortController();
+    inFlightSyncAbortRef.current.add(controller);
+    try {
+      try {
+        await ensureControlPlaneSession();
+        const permit = controlPlaneRef.current.activePermit;
+        const srv = await fetch('/api/control-plane/authorize', {
+          method: 'POST',
+          credentials: 'include',
+          headers: buildControlPlaneHeaders(),
+          body: JSON.stringify({
+            permitId: permit?.permitId || null,
+            scope: 'device_sync',
+            clientEpoch: controlPlaneRef.current.epoch,
+            clientFencingVersion: permit?.fencingVersion,
+          }),
+        });
+        const srvJson = await srv.json().catch(() => null);
+        if (!srv.ok || !srvJson?.authorized) {
+          const msg = srvJson?.reason || `Server denied device_sync (HTTP ${srv.status}).`;
+          setOnDeviceMount((prev) => ({ ...prev, lastError: msg, lastNotice: null }));
+          return;
+        }
+      } catch {
+        setOnDeviceMount((prev) => ({
+          ...prev,
+          lastError: 'Server control plane unreachable for device_sync (fail-closed).',
+          lastNotice: null,
+        }));
+        return;
+      }
+
+      const report = await syncFilesToDeviceWithRecovery(handle, targets, {
+        getControlState: () => controlPlaneRef.current,
+        getPermit: () => controlPlaneRef.current.activePermit,
+        signal: controller.signal,
+      });
+
+      if (report.status === 'DENIED') {
+        setAuditLedger((prev) =>
+          recordControlPlaneAudit(prev, 'device_sync_denied', handle.name, 'human:mercy', {
+            reason: report.authorizationError,
+            mode: controlPlaneRef.current.mode,
+          })
+        );
+        setOnDeviceMount((prev) => ({
+          ...prev,
+          lastError: report.authorizationError || 'Device sync denied by control plane.',
+          lastNotice: null,
+        }));
+        return;
+      }
+
+      const failedOrAbortedSet = new Set([
+        ...report.failedFiles.map((f) => f.path),
+        ...report.abortedPaths,
+      ]);
+      const retryQueue = targets.filter((f) => failedOrAbortedSet.has(f.path));
+      setPendingSyncFiles(retryQueue);
+      await persistRecoveryPaths(retryQueue.map((f) => f.path));
+
+      const diskFiles = await refreshDeviceTree(handle);
+      setAuditLedger((prev) =>
+        recordControlPlaneAudit(prev, 'device_sync_' + report.status.toLowerCase(), handle.name, 'human:mercy', {
+          writtenCount: report.writtenPaths.length,
+          failedCount: report.failedFiles.length,
+          abortedCount: report.abortedPaths.length,
+        })
+      );
+
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        syncedFileCount: diskFiles.length,
+        lastSyncedAt: Date.now(),
+        lastNotice:
+          report.status === 'SYNCED'
+            ? `Pushed ${report.writtenPaths.length} workspace files to "${handle.name}".`
+            : `Synced ${report.writtenPaths.length} files (${retryQueue.length} pending recovery).`,
+        lastError:
+          report.authorizationError || report.failedFiles[0]?.reason || null,
+      }));
+    } finally {
+      inFlightSyncAbortRef.current.delete(controller);
+    }
+  };
+
+  const handleRetryFailedDeviceSync = async () => {
+    if (pendingSyncFiles.length === 0) return;
+    await handlePushToDevice(pendingSyncFiles);
   };
 
   const handlePullFromDevice = async () => {
@@ -739,6 +1025,15 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     setLastModifiedFile({ path, action: 'update', timestamp: Date.now() });
 
     if (deviceDirHandleRef.current && onDeviceMount.autoSync) {
+      const auth = authorizeProtectedOperation(
+        controlPlaneRef.current,
+        controlPlaneRef.current.activePermit,
+        'device_sync'
+      );
+      if (!auth.authorized) {
+        setOnDeviceMount((prev) => ({ ...prev, lastError: auth.reason }));
+        return;
+      }
       const handle = deviceDirHandleRef.current;
       writeSingleFileToDirectoryHandle(handle, path, content)
         .then(() => refreshDeviceTree(handle))
@@ -773,6 +1068,15 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     setLastModifiedFile({ path: name, action: 'create', timestamp: Date.now() });
 
     if (deviceDirHandleRef.current && onDeviceMount.autoSync) {
+      const auth = authorizeProtectedOperation(
+        controlPlaneRef.current,
+        controlPlaneRef.current.activePermit,
+        'device_sync'
+      );
+      if (!auth.authorized) {
+        setOnDeviceMount((prev) => ({ ...prev, lastError: auth.reason }));
+        return;
+      }
       const handle = deviceDirHandleRef.current;
       writeSingleFileToDirectoryHandle(handle, name, content)
         .then(() => refreshDeviceTree(handle))
@@ -800,11 +1104,186 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     setLastModifiedFile({ path, action: 'delete', timestamp: Date.now() });
 
     if (deviceDirHandleRef.current && onDeviceMount.autoSync) {
+      const auth = authorizeProtectedOperation(
+        controlPlaneRef.current,
+        controlPlaneRef.current.activePermit,
+        'device_sync'
+      );
+      if (!auth.authorized) {
+        setOnDeviceMount((prev) => ({ ...prev, lastError: auth.reason }));
+        return;
+      }
       const handle = deviceDirHandleRef.current;
       deleteEntryFromDirectoryHandle(handle, path)
         .then(() => refreshDeviceTree(handle))
         .catch(() => {});
     }
+  };
+
+  // Handle batch drag-and-drop or multi-file upload into active workspace
+  // Enforces server + client GLOBAL-MODE-001, IAM-001, ING-05 atomic commit, ING-06 durable recovery, ING-07 snapshot validation, and ING-11 cancellation.
+  const handleUploadWorkspaceFiles = async (
+    uploadedFiles: ProjectFile[]
+  ): Promise<{ ok: boolean; error?: string; commitHash?: string }> => {
+    if (uploadedFiles.length === 0) {
+      return { ok: false, error: 'No readable files provided.' };
+    }
+
+    // 1. Authoritative server control-plane enforcement gate (fail-closed if server denies)
+    const txId = `tx_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+    try {
+      await ensureControlPlaneSession();
+      const permit = controlPlaneRef.current.activePermit;
+      const serverResp = await fetch('/api/control-plane/ingest', {
+        method: 'POST',
+        credentials: 'include',
+        headers: buildControlPlaneHeaders(),
+        body: JSON.stringify({
+          transactionId: txId,
+          permitId: permit?.permitId || null,
+          expectedEpoch: controlPlaneRef.current.epoch,
+          expectedFencingVersion: permit?.fencingVersion,
+          uploadedFiles,
+          actor: 'human:mercy',
+        }),
+      });
+      const serverData = await serverResp.json().catch(() => null);
+      if (!serverResp.ok || !serverData?.ok) {
+        const denyReason =
+          serverData?.error || `Server control plane denied ingestion (HTTP ${serverResp.status}).`;
+        setAuditLedger((prev) =>
+          recordControlPlaneAudit(prev, 'server_workspace_ingest_denied', 'dropzone', 'human:mercy', {
+            status: serverResp.status,
+            code: serverData?.code,
+            reason: denyReason,
+          })
+        );
+        return { ok: false, error: denyReason };
+      }
+      if (serverData.receipt) {
+        setAuditLedger((prev) =>
+          recordControlPlaneAudit(
+            prev,
+            'server_ingest_receipt_issued',
+            serverData.receipt.receiptId,
+            'server:control_plane_ed25519',
+            {
+              algorithm: serverData.receipt.algorithm,
+              linearizationSeq: serverData.linearizationSeq,
+              treeDigest: serverData.treeDigest,
+            }
+          )
+        );
+      }
+    } catch {
+      return {
+        ok: false,
+        error: 'Authoritative server control plane unreachable; fail-closed denial.',
+      };
+    }
+
+    // 2. Atomic ingestion transaction + device recovery + linearization cancellation
+    const controller = new AbortController();
+    inFlightSyncAbortRef.current.add(controller);
+    let outcome;
+    try {
+      outcome = await executeAtomicIngestionTransaction({
+        project,
+        uploadedFiles,
+        author: 'Mercy (User)',
+        getControlState: () => controlPlaneRef.current,
+        getPermit: () => controlPlaneRef.current.activePermit,
+        auditLedger,
+        deviceHandle: deviceDirHandleRef.current,
+        autoSyncDevice: Boolean(deviceDirHandleRef.current && onDeviceMount.autoSync),
+        signal: controller.signal,
+        persistRecoveryQueue: persistRecoveryPaths,
+      });
+    } finally {
+      inFlightSyncAbortRef.current.delete(controller);
+    }
+
+    setAuditLedger(outcome.auditLedger);
+    if (outcome.snapshotReport) {
+      setLastSnapshotValidation(outcome.snapshotReport);
+    }
+
+    if (!outcome.ok || !outcome.commit) {
+      return { ok: false, error: outcome.error || 'Ingestion blocked by control plane.' };
+    }
+
+    setProject(outcome.project);
+    setActiveFilePath(uploadedFiles[0].path);
+    setLastModifiedFile({
+      path: uploadedFiles.map((f) => f.path).join(', '),
+      action: 'upload',
+      timestamp: Date.now(),
+    });
+
+    if (outcome.pendingRecoveryPaths.length > 0) {
+      const pendingSet = new Set(outcome.pendingRecoveryPaths);
+      setPendingSyncFiles(uploadedFiles.filter((f) => pendingSet.has(f.path)));
+    } else {
+      setPendingSyncFiles([]);
+    }
+
+    if (deviceDirHandleRef.current && outcome.syncReport && outcome.syncReport.status !== 'DENIED') {
+      const handle = deviceDirHandleRef.current;
+      await refreshDeviceTree(handle).catch(() => {});
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        lastSyncedAt: outcome.syncReport!.writtenPaths.length > 0 ? Date.now() : prev.lastSyncedAt,
+        lastNotice:
+          outcome.syncReport!.status === 'SYNCED'
+            ? `Auto-synced ${outcome.syncReport!.writtenPaths.length} uploaded file${
+                outcome.syncReport!.writtenPaths.length === 1 ? '' : 's'
+              } to "${handle.name}".`
+            : outcome.syncReport!.writtenPaths.length > 0
+            ? `Synced ${outcome.syncReport!.writtenPaths.length} file(s); ${outcome.pendingRecoveryPaths.length} pending recovery.`
+            : prev.lastNotice,
+        lastError:
+          outcome.syncReport!.authorizationError ||
+          outcome.syncReport!.failedFiles[0]?.reason ||
+          null,
+      }));
+    }
+
+    // 3. Separated Watch Mode static/syntax verification of actual uploaded files (distinct from untested snapshot validation)
+    if (watchMode) {
+      try {
+        await ensureControlPlaneSession();
+        const verifyRes = await fetch('/api/control-plane/verify-upload', {
+          method: 'POST',
+          credentials: 'include',
+          headers: buildControlPlaneHeaders(),
+          body: JSON.stringify({
+            commitHash: outcome.commit.hash,
+            files: uploadedFiles,
+          }),
+        });
+        if (verifyRes.ok) {
+          const watchReport: WatchVerificationReport = await verifyRes.json();
+          setLastWatchVerification(watchReport);
+          setAuditLedger((prev) =>
+            recordControlPlaneAudit(
+              prev,
+              'watch_verification_recorded',
+              outcome.commit!.id,
+              'server:watch_verifier',
+              {
+                allPassed: watchReport.allPassed,
+                claimStatus: watchReport.claimStatus,
+                receiptId: watchReport.serverReceipt?.receiptId,
+              }
+            )
+          );
+        }
+      } catch {
+        // Watch verification remains unrun when server offline
+      }
+    }
+
+    return { ok: true, commitHash: outcome.commit.hash };
   };
 
   // Apply code to a specific file
@@ -1208,6 +1687,7 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
                 activeFilePath={activeFilePath}
                 onSelectFile={setActiveFilePath}
                 onAddFile={handleCreateFile}
+                onUploadFiles={handleUploadWorkspaceFiles}
                 onDeleteFile={handleDeleteFile}
                 onReferenceFileInChat={(path) => {
                   setExternalPrompt(`@${path}`);
@@ -1223,7 +1703,7 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
                 onReconnectSavedFolder={handleReconnectSavedFolder}
                 onConnectOpfs={handleConnectOpfsVolume}
                 onImportFolderFiles={handleImportFolderFiles}
-                onPushToDevice={handlePushToDevice}
+                onPushToDevice={() => handlePushToDevice()}
                 onPullFromDevice={handlePullFromDevice}
                 onRefreshDeviceDiff={() => {
                   if (deviceDirHandleRef.current) {
@@ -1234,6 +1714,13 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
                   setOnDeviceMount((prev) => ({ ...prev, autoSync: !prev.autoSync }))
                 }
                 onDisconnectDevice={handleDisconnectDevice}
+                controlPlaneState={controlPlaneState}
+                onTransitionGlobalMode={handleTransitionGlobalMode}
+                onIssuePermit={handleIssueIngestionPermit}
+                pendingSyncFiles={pendingSyncFiles}
+                onRetryFailedSync={handleRetryFailedDeviceSync}
+                lastSnapshotValidation={lastSnapshotValidation}
+                lastWatchVerification={lastWatchVerification}
               />
             }
             renderContract={

@@ -1,0 +1,36 @@
+# Frozen v4 workspace — one path per line, UTF-8, LF.
+# First 14 are known from the v4.1 log. The remaining 19 must be supplied
+# before `an-emit-manifest` will pass; the toolchain exits 5 until they are.
+Atomic_Nexus_Routing_Architecture
+Native_App-to-App_Data_Transfer_Pipeline_Visualizer
+Registry_Acceptance___Governance_Audit_Report.md
+Sovereign_Architectural_Benchmark___Source_A.md
+Substrate_Implementation_Actuality___Pre-Dis.md
+reg_accept_engine.py
+an_evc_001_contract.json
+pva_001_contract.json
+global_mode_001_contract.json
+iam_001_contract.json
+mcp_001_contract.json
+public_key_trust_registry.json
+signed_master_evidence_envelope.json
+run_full_project_verification-v4.py
+# TODO 15/33
+# TODO 16/33
+# TODO 17/33
+# TODO 18/33
+# TODO 19/33
+# TODO 20/33
+# TODO 21/33
+# TODO 22/33
+# TODO 23/33
+# TODO 24/33
+# TODO 25/33
+# TODO 26/33
+# TODO 27/33
+# TODO 28/33
+# TODO 29/33
+# TODO 30/33
+# TODO 31/33
+# TODO 32/33
+# TODO 33/33

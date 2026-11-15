@@ -56,6 +56,12 @@ import {
   isValidSha256Fingerprint,
   runFullScalePlayStoreAudit,
 } from './src/utils/playStoreAudit.ts';
+import {
+  CONTROL_PLANE_AUTH_MATRIX,
+  createAuthoritativeControlPlaneEngine,
+  verifyEd25519Receipt,
+  verifyReceiptWithKeyring,
+} from './src/utils/serverControlPlane.ts';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -2035,6 +2041,279 @@ app.post('/api/audit/playstore/assetlinks', (req: Request, res: Response) => {
     evidence,
     report,
   });
+});
+
+// ==================== AUTHORITATIVE SERVER CONTROL PLANE (GLOBAL-MODE-001 / IAM-001 / ED25519) ====================
+const CONTROL_PLANE_STATE_DIR = path.resolve(process.cwd(), '.control-plane-state');
+const CONTROL_PLANE_WORKSPACE_ID = 'ws_unified_one';
+const serverControlPlane = createAuthoritativeControlPlaneEngine({
+  initialActive: true,
+  stateDir: CONTROL_PLANE_STATE_DIR,
+  workspaceId: CONTROL_PLANE_WORKSPACE_ID,
+});
+
+function extractBearerOrCookieToken(req: Request): string | null {
+  const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : '';
+  if (authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+  const cookieHeader = typeof req.headers.cookie === 'string' ? req.headers.cookie : '';
+  if (cookieHeader) {
+    const match = cookieHeader
+      .split(';')
+      .map((s) => s.trim())
+      .find((s) => s.startsWith('liquidos_cp_session='));
+    if (match) {
+      return decodeURIComponent(match.slice('liquidos_cp_session='.length));
+    }
+  }
+  return null;
+}
+
+function enforceControlPlaneHttpAuth(
+  req: Request,
+  res: Response,
+  routePath: string,
+  opts?: { requestedWorkspaceId?: string | null; requestedMode?: string | null }
+) {
+  const auth = serverControlPlane.authorizeHttpRequest({
+    method: req.method === 'GET' ? 'GET' : 'POST',
+    path: routePath,
+    bearerToken: extractBearerOrCookieToken(req),
+    origin: typeof req.headers.origin === 'string' ? req.headers.origin : null,
+    host: typeof req.headers.host === 'string' ? req.headers.host : null,
+    requestedWorkspaceId:
+      opts?.requestedWorkspaceId ||
+      (typeof req.headers['x-workspace-id'] === 'string' ? req.headers['x-workspace-id'] : null) ||
+      (typeof req.body?.workspaceId === 'string' ? req.body.workspaceId : null),
+    requestedMode: opts?.requestedMode ?? (typeof req.body?.mode === 'string' ? req.body.mode : null),
+    nonce: typeof req.headers['x-request-nonce'] === 'string' ? req.headers['x-request-nonce'] : null,
+  });
+  if (!auth.allowed) {
+    res.status(auth.status).json({
+      ok: false,
+      code: auth.code,
+      error: auth.reason,
+      endpoint: routePath,
+    });
+    return null;
+  }
+  return auth.claims || null;
+}
+
+app.get('/api/control-plane/state', (_req: Request, res: Response) => {
+  return res.json(serverControlPlane.getPublicState());
+});
+
+app.get('/api/control-plane/keys', (_req: Request, res: Response) => {
+  return res.json({
+    ...serverControlPlane.getPublicKeysSnapshot(),
+    authMatrix: CONTROL_PLANE_AUTH_MATRIX,
+  });
+});
+
+app.post('/api/control-plane/session', (req: Request, res: Response) => {
+  const authCheck = serverControlPlane.authorizeHttpRequest({
+    method: 'POST',
+    path: '/api/control-plane/session',
+    origin: typeof req.headers.origin === 'string' ? req.headers.origin : null,
+    host: typeof req.headers.host === 'string' ? req.headers.host : null,
+  });
+  if (!authCheck.allowed) {
+    return res.status(authCheck.status).json({
+      ok: false,
+      code: authCheck.code,
+      error: authCheck.reason,
+    });
+  }
+
+  const configuredSecret = process.env.CONTROL_PLANE_ADMIN_SECRET;
+  const suppliedSecret = typeof req.headers['x-control-plane-secret'] === 'string'
+    ? req.headers['x-control-plane-secret']
+    : '';
+  const hasOriginOrSameSite =
+    Boolean(req.headers.origin) || req.headers['sec-fetch-site'] === 'same-origin';
+
+  if (configuredSecret) {
+    if (!suppliedSecret || suppliedSecret !== configuredSecret) {
+      return res.status(401).json({
+        ok: false,
+        code: 'ERR_UNAUTHENTICATED',
+        error: 'Valid X-Control-Plane-Secret required for session minting.',
+      });
+    }
+  } else if (!hasOriginOrSameSite) {
+    return res.status(403).json({
+      ok: false,
+      code: 'ERR_ORIGIN_REQUIRED',
+      error: 'Same-origin browser context required to bootstrap interactive workbench session.',
+    });
+  }
+
+  const { token, claims } = serverControlPlane.issueSessionToken({
+    actor: typeof req.body?.actor === 'string' ? req.body.actor : 'human:mercy',
+    role: 'admin',
+    workspaceId: CONTROL_PLANE_WORKSPACE_ID,
+  });
+  res.setHeader(
+    'Set-Cookie',
+    `liquidos_cp_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/api/control-plane`
+  );
+  return res.json({ ok: true, token, claims });
+});
+
+app.post('/api/control-plane/mode', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/control-plane/mode');
+  if (!claims) return;
+
+  const { mode, reason } = req.body || {};
+  if (mode !== 'ACTIVE' && mode !== 'RESTRICTED' && mode !== 'LOCKDOWN') {
+    return res.status(400).json({ error: 'Invalid mode. Expected ACTIVE, RESTRICTED, or LOCKDOWN.' });
+  }
+  const outcome = serverControlPlane.transitionMode(
+    mode,
+    typeof reason === 'string' && reason.trim() ? reason.trim() : undefined,
+    claims.actor
+  );
+  return res.json(outcome);
+});
+
+app.post('/api/control-plane/permit', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/control-plane/permit');
+  if (!claims) return;
+
+  const { subject, scopes, ttlMs } = req.body || {};
+  const result = serverControlPlane.issuePermit({
+    subject: typeof subject === 'string' ? subject : claims.actor,
+    scopes: Array.isArray(scopes) ? scopes : undefined,
+    ttlMs: typeof ttlMs === 'number' ? ttlMs : undefined,
+  });
+  return res.status(result.status).json(result);
+});
+
+app.post('/api/control-plane/keys/rotate', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/control-plane/keys/rotate');
+  if (!claims) return;
+
+  const rotated = serverControlPlane.rotateSigningKey(claims.actor);
+  return res.json(rotated);
+});
+
+app.post('/api/control-plane/authorize', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/control-plane/authorize');
+  if (!claims) return;
+
+  const { permitId, scope, clientEpoch, clientFencingVersion } = req.body || {};
+  if (
+    scope !== 'workspace_ingest' &&
+    scope !== 'workspace_commit' &&
+    scope !== 'device_sync'
+  ) {
+    return res.status(400).json({ error: 'Invalid protected operation scope.' });
+  }
+  const result = serverControlPlane.authorizeOperation({
+    permitId: typeof permitId === 'string' ? permitId : null,
+    scope,
+    clientEpoch: typeof clientEpoch === 'number' ? clientEpoch : undefined,
+    clientFencingVersion: typeof clientFencingVersion === 'number' ? clientFencingVersion : undefined,
+  });
+  return res.status(result.status).json({
+    authorized: result.authorized,
+    code: result.check.code,
+    reason: result.check.reason,
+    linearizationSeq: result.linearizationSeq,
+    receipt: result.receipt,
+    state: result.state,
+  });
+});
+
+app.post('/api/control-plane/ingest', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/control-plane/ingest');
+  if (!claims) return;
+
+  const {
+    permitId,
+    uploadedFiles,
+    commitHash,
+    expectedEpoch,
+    expectedFencingVersion,
+    transactionId,
+    workspaceId,
+  } = req.body || {};
+  const result = serverControlPlane.authorizeIngestionCommit({
+    permitId: typeof permitId === 'string' ? permitId : null,
+    uploadedFiles: Array.isArray(uploadedFiles) ? uploadedFiles : [],
+    commitHash: typeof commitHash === 'string' ? commitHash : undefined,
+    expectedEpoch: typeof expectedEpoch === 'number' ? expectedEpoch : undefined,
+    expectedFencingVersion:
+      typeof expectedFencingVersion === 'number' ? expectedFencingVersion : undefined,
+    transactionId: typeof transactionId === 'string' ? transactionId : undefined,
+    workspaceId: typeof workspaceId === 'string' ? workspaceId : claims.workspaceId,
+    actor: claims.actor,
+  });
+  return res.status(result.status).json(result);
+});
+
+app.post('/api/control-plane/verify-upload', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/control-plane/verify-upload');
+  if (!claims) return;
+
+  const { commitHash, files } = req.body || {};
+  if (!Array.isArray(files) || files.length === 0) {
+    return res.status(400).json({ error: 'files array is required for Watch Mode verification.' });
+  }
+  const report = serverControlPlane.verifyUploadedFilesWatchMode({
+    commitHash: typeof commitHash === 'string' ? commitHash : '',
+    files,
+  });
+  return res.json(report);
+});
+
+app.post('/api/control-plane/recovery-queue', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/control-plane/recovery-queue');
+  if (!claims) return;
+
+  const { paths, transactionId, expectedFileHashes, currentFileHashes, action, error } = req.body || {};
+  const outcome = serverControlPlane.updateRecoveryQueue(Array.isArray(paths) ? paths : [], {
+    transactionId: typeof transactionId === 'string' ? transactionId : undefined,
+    expectedFileHashes,
+    currentFileHashes,
+    action,
+    actor: claims.actor,
+    error: typeof error === 'string' ? error : undefined,
+  });
+  return res.status(outcome.status).json({
+    saved: outcome.ok,
+    ...outcome,
+  });
+});
+
+app.get('/api/control-plane/audit', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/control-plane/audit');
+  if (!claims) return;
+
+  return res.json(serverControlPlane.getAuditSnapshot());
+});
+
+app.post('/api/control-plane/verify-receipt', (req: Request, res: Response) => {
+  const { keyId, canonicalPayload, signature, publicKeyPem } = req.body || {};
+  const keysSnapshot = serverControlPlane.getPublicKeysSnapshot();
+  if (typeof keyId === 'string' && keyId.trim()) {
+    const verification = verifyReceiptWithKeyring(
+      { keyId, canonicalPayload, signature, publicKeyPem },
+      keysSnapshot.publicKeysById
+    );
+    return res.json(verification);
+  }
+  const keyToUse =
+    typeof publicKeyPem === 'string' && publicKeyPem.trim()
+      ? publicKeyPem
+      : keysSnapshot.publicKeyPem;
+  const valid =
+    typeof canonicalPayload === 'string' &&
+    typeof signature === 'string' &&
+    verifyEd25519Receipt(keyToUse, canonicalPayload, signature);
+  return res.json({ valid });
 });
 
 // Health check
