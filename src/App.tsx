@@ -3,11 +3,32 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Project, ProjectFile, ModelOption, Collaborator, ModelHyperparameters, ChatMessage, ToolCall } from './types';
 import { TEMPLATES, AppTemplate } from './services/templates';
+import { useAssistantSentiment } from './hooks/useAssistantSentiment';
+import { hydrateVectorVault, similaritySearch } from './services/vectorStore';
+import { generateDeterministicEmbedding } from './services/snapshotPipeline';
 import { createCommit, rollbackToCommit } from './utils/versionControl';
 import { extractFilesFromResponse, safeEvaluateMath } from './utils/toolExecutor';
+import {
+  detectFileSystemCapabilities,
+  OnDeviceMountStatus,
+  DeviceSyncDiff,
+  computeSyncDiff,
+  pickNativeDirectoryHandle,
+  connectOpfsRoot,
+  getStorageQuotaEstimate,
+  saveDirectoryHandle,
+  loadDirectoryHandle,
+  clearDirectoryHandle,
+  requestHandlePermission,
+  readDirectoryHandleTree,
+  writeFilesToDirectoryHandle,
+  writeSingleFileToDirectoryHandle,
+  deleteEntryFromDirectoryHandle,
+  inferLanguageFromPath,
+} from './utils/onDeviceFs';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ChatStream } from './components/ChatStream';
@@ -218,6 +239,274 @@ export default function App() {
     total: number;
   } | null>(null);
 
+  // 2d. On-Device File System Connectivity State (Host Folder / OPFS / Folder Import)
+  const deviceCapabilities = useMemo(() => detectFileSystemCapabilities(), []);
+  const deviceDirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+  const [deviceDiskFiles, setDeviceDiskFiles] = useState<ProjectFile[] | null>(null);
+  const [onDeviceMount, setOnDeviceMount] = useState<OnDeviceMountStatus>({
+    mode: 'disconnected',
+    mountName: null,
+    permission: 'prompt',
+    autoSync: true,
+    lastSyncedAt: null,
+    syncedFileCount: 0,
+    quota: null,
+    savedHandleName: null,
+    lastNotice: null,
+    lastError: null,
+  });
+
+  const onDeviceDiff: DeviceSyncDiff | null = useMemo(() => {
+    if (!deviceDiskFiles) return null;
+    return computeSyncDiff(project.files, deviceDiskFiles);
+  }, [project.files, deviceDiskFiles]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [savedHandle, quota] = await Promise.all([
+        loadDirectoryHandle(),
+        getStorageQuotaEstimate(),
+      ]);
+      if (cancelled) return;
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        quota,
+        savedHandleName: savedHandle?.name || null,
+      }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshDeviceTree = async (handle: FileSystemDirectoryHandle) => {
+    const [diskFiles, quota] = await Promise.all([
+      readDirectoryHandleTree(handle),
+      getStorageQuotaEstimate(),
+    ]);
+    setDeviceDiskFiles(diskFiles);
+    setOnDeviceMount((prev) => ({
+      ...prev,
+      quota,
+      syncedFileCount: diskFiles.length,
+    }));
+    return diskFiles;
+  };
+
+  const handleMountNativeFolder = async () => {
+    try {
+      const handle = await pickNativeDirectoryHandle();
+      const perm = await requestHandlePermission(handle, 'readwrite');
+      if (perm === 'denied') {
+        setOnDeviceMount((prev) => ({
+          ...prev,
+          lastError: `Permission denied for folder "${handle.name}".`,
+          lastNotice: null,
+        }));
+        return;
+      }
+      deviceDirHandleRef.current = handle;
+      await saveDirectoryHandle(handle).catch(() => {});
+      const diskFiles = await refreshDeviceTree(handle);
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        mode: 'native',
+        mountName: handle.name,
+        permission: perm,
+        savedHandleName: handle.name,
+        syncedFileCount: diskFiles.length,
+        lastSyncedAt: Date.now(),
+        lastNotice: `Mounted local folder "${handle.name}" (${diskFiles.length} readable files scanned).`,
+        lastError: null,
+      }));
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      const msg =
+        err?.name === 'SecurityError' || String(err?.message || '').includes('Cross origin')
+          ? 'Host folder picker is blocked inside a cross-origin iframe. Use "Connect OPFS Volume" or "Import Folder", or open the app in a standalone window.'
+          : err?.message || 'Unable to mount local folder.';
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        lastError: msg,
+        lastNotice: null,
+      }));
+    }
+  };
+
+  const handleReconnectSavedFolder = async () => {
+    try {
+      const handle = await loadDirectoryHandle();
+      if (!handle) {
+        setOnDeviceMount((prev) => ({
+          ...prev,
+          savedHandleName: null,
+          lastError: 'No saved folder handle found in IndexedDB.',
+        }));
+        return;
+      }
+      const perm = await requestHandlePermission(handle, 'readwrite');
+      if (perm !== 'granted') {
+        setOnDeviceMount((prev) => ({
+          ...prev,
+          lastError: `Re-authorization was not granted for "${handle.name}".`,
+        }));
+        return;
+      }
+      deviceDirHandleRef.current = handle;
+      const diskFiles = await refreshDeviceTree(handle);
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        mode: 'native',
+        mountName: handle.name,
+        permission: 'granted',
+        syncedFileCount: diskFiles.length,
+        lastSyncedAt: Date.now(),
+        lastNotice: `Reconnected host folder "${handle.name}" (${diskFiles.length} files).`,
+        lastError: null,
+      }));
+    } catch (err: any) {
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        lastError: err?.message || 'Failed to reconnect saved folder.',
+      }));
+    }
+  };
+
+  const handleConnectOpfsVolume = async () => {
+    try {
+      const opfsDir = await connectOpfsRoot();
+      deviceDirHandleRef.current = opfsDir;
+      let diskFiles = await refreshDeviceTree(opfsDir);
+      let noticePrefix = `Connected OPFS disk "${opfsDir.name}" (${diskFiles.length} files on device).`;
+      if (diskFiles.length === 0 && project.files.length > 0) {
+        const res = await writeFilesToDirectoryHandle(opfsDir, project.files);
+        diskFiles = await refreshDeviceTree(opfsDir);
+        noticePrefix = `Initialized OPFS disk "${opfsDir.name}" with ${res.writtenCount} workspace files.`;
+      }
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        mode: 'opfs',
+        mountName: opfsDir.name,
+        permission: 'sandboxed',
+        syncedFileCount: diskFiles.length,
+        lastSyncedAt: Date.now(),
+        lastNotice: noticePrefix,
+        lastError: null,
+      }));
+    } catch (err: any) {
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        lastError: err?.message || 'Failed to initialize OPFS volume.',
+        lastNotice: null,
+      }));
+    }
+  };
+
+  const handlePushToDevice = async () => {
+    const handle = deviceDirHandleRef.current;
+    if (!handle) return;
+    const res = await writeFilesToDirectoryHandle(handle, project.files);
+    const diskFiles = await refreshDeviceTree(handle);
+    setOnDeviceMount((prev) => ({
+      ...prev,
+      syncedFileCount: diskFiles.length,
+      lastSyncedAt: Date.now(),
+      lastNotice:
+        res.errors.length === 0
+          ? `Pushed ${res.writtenCount} workspace files to "${handle.name}".`
+          : `Pushed ${res.writtenCount} files (${res.errors.length} errors).`,
+      lastError: res.errors[0] || null,
+    }));
+  };
+
+  const handlePullFromDevice = async () => {
+    const handle = deviceDirHandleRef.current;
+    if (!handle) return;
+    const diskFiles = await refreshDeviceTree(handle);
+    if (diskFiles.length === 0) {
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        lastNotice: `Folder "${handle.name}" has no matching text source files to pull.`,
+        lastError: null,
+      }));
+      return;
+    }
+    const { project: committed } = createCommit(
+      { ...project, files: diskFiles },
+      `Pulled ${diskFiles.length} files from on-device ${handle.name}`
+    );
+    setProject(committed);
+    setActiveFilePath(diskFiles[0]?.path || 'index.html');
+    setLastModifiedFile({
+      path: diskFiles[0]?.path || handle.name,
+      action: 'device-pull',
+      timestamp: Date.now(),
+    });
+    setOnDeviceMount((prev) => ({
+      ...prev,
+      syncedFileCount: diskFiles.length,
+      lastSyncedAt: Date.now(),
+      lastNotice: `Pulled ${diskFiles.length} files from "${handle.name}" into active workspace.`,
+      lastError: null,
+    }));
+  };
+
+  const handleImportFolderFiles = (rootName: string, importedFiles: ProjectFile[]) => {
+    if (importedFiles.length === 0) {
+      setOnDeviceMount((prev) => ({
+        ...prev,
+        lastError: `Folder "${rootName}" contained no readable source files.`,
+        lastNotice: null,
+      }));
+      return;
+    }
+    const mergedMap = new Map<string, ProjectFile>(project.files.map((f) => [f.path, f]));
+    for (const inf of importedFiles) {
+      mergedMap.set(inf.path, inf);
+    }
+    const mergedList = Array.from(mergedMap.values());
+    const { project: committed } = createCommit(
+      { ...project, files: mergedList },
+      `Imported ${importedFiles.length} files from device folder "${rootName}"`
+    );
+    setProject(committed);
+    setActiveFilePath(importedFiles[0]?.path || activeFilePath);
+    setLastModifiedFile({
+      path: importedFiles[0]?.path || rootName,
+      action: 'device-import',
+      timestamp: Date.now(),
+    });
+    setDeviceDiskFiles(importedFiles);
+    setOnDeviceMount((prev) => ({
+      ...prev,
+      mode: prev.mode === 'disconnected' ? 'imported' : prev.mode,
+      mountName: prev.mode === 'disconnected' ? rootName : prev.mountName,
+      syncedFileCount: importedFiles.length,
+      lastSyncedAt: Date.now(),
+      lastNotice: `Imported ${importedFiles.length} files from local folder "${rootName}".`,
+      lastError: null,
+    }));
+  };
+
+  const handleDisconnectDevice = async () => {
+    deviceDirHandleRef.current = null;
+    setDeviceDiskFiles(null);
+    await clearDirectoryHandle();
+    const quota = await getStorageQuotaEstimate();
+    setOnDeviceMount((prev) => ({
+      ...prev,
+      mode: 'disconnected',
+      mountName: null,
+      permission: 'prompt',
+      syncedFileCount: 0,
+      savedHandleName: null,
+      quota,
+      lastNotice: 'Disconnected on-device file system mount.',
+      lastError: null,
+    }));
+  };
+
   const handleCreateBackup = (name: string) => {
     const newB: SandboxBackup = {
       id: 'bk_' + Date.now(),
@@ -310,6 +599,8 @@ export default function App() {
     targetAccelerator: 'gpu,cpu',
     peakRamCeilingMb: 2800,
   });
+
+  const { startInteractionTimer, trackInteraction } = useAssistantSentiment();
 
   // 5. Chat Stream Messages
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -435,17 +726,31 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
       };
     });
     setLastModifiedFile({ path, action: 'update', timestamp: Date.now() });
+
+    if (deviceDirHandleRef.current && onDeviceMount.autoSync) {
+      const handle = deviceDirHandleRef.current;
+      writeSingleFileToDirectoryHandle(handle, path, content)
+        .then(() => refreshDeviceTree(handle))
+        .then(() => {
+          setOnDeviceMount((prev) => ({
+            ...prev,
+            lastSyncedAt: Date.now(),
+            lastNotice: `Auto-synced "${path}" to ${handle.name}`,
+          }));
+        })
+        .catch(() => {});
+    }
   };
 
   // Handle create file in code editor
-  const handleCreateFile = (name: string) => {
-    const ext = name.split('.').pop() || 'html';
-    const lang = ext === 'css' ? 'css' : ext === 'js' ? 'javascript' : ext === 'ts' ? 'typescript' : ext === 'json' ? 'json' : 'html';
+  const handleCreateFile = (name: string, initialContent?: string) => {
+    const lang = inferLanguageFromPath(name);
+    const content = typeof initialContent === 'string' ? initialContent : `/* ${name} created */\n`;
     const newFile: ProjectFile = {
-      name,
+      name: name.split('/').pop() || name,
       path: name,
-      language: lang as any,
-      content: `/* ${name} created */\n`,
+      language: lang,
+      content,
       lastModified: Date.now(),
     };
 
@@ -455,6 +760,20 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     }));
     setActiveFilePath(name);
     setLastModifiedFile({ path: name, action: 'create', timestamp: Date.now() });
+
+    if (deviceDirHandleRef.current && onDeviceMount.autoSync) {
+      const handle = deviceDirHandleRef.current;
+      writeSingleFileToDirectoryHandle(handle, name, content)
+        .then(() => refreshDeviceTree(handle))
+        .then(() => {
+          setOnDeviceMount((prev) => ({
+            ...prev,
+            lastSyncedAt: Date.now(),
+            lastNotice: `Auto-created "${name}" on ${handle.name}`,
+          }));
+        })
+        .catch(() => {});
+    }
   };
 
   // Handle delete file
@@ -468,6 +787,13 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
       return { ...prev, files: remaining };
     });
     setLastModifiedFile({ path, action: 'delete', timestamp: Date.now() });
+
+    if (deviceDirHandleRef.current && onDeviceMount.autoSync) {
+      const handle = deviceDirHandleRef.current;
+      deleteEntryFromDirectoryHandle(handle, path)
+        .then(() => refreshDeviceTree(handle))
+        .catch(() => {});
+    }
   };
 
   // Apply code to a specific file
@@ -561,12 +887,13 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
       timestamp: Date.now(),
     };
 
+    startInteractionTimer();
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
+    const toolCalls: ToolCall[] = [];
 
     try {
       // 1. Check for client-side tool calling (e.g. math evaluation or fast execution)
-      const toolCalls: ToolCall[] = [];
       const mathMatch = promptText.match(/(?:calculate|math|eval|compute)\s+([0-9+\-*/().,%^ \t\neE]+)/i);
 
       if (mathMatch) {
@@ -595,6 +922,30 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
         timestamp: Date.now(),
       });
 
+      // 1b. Query local Sovereign Vector Vault for live snapshot context
+      await hydrateVectorVault();
+      const queryVec = generateDeterministicEmbedding(promptText);
+      const vectorHits = similaritySearch(queryVec, 4).filter((hit) => hit.similarity > 0.05);
+      if (vectorHits.length > 0) {
+        toolCalls.push({
+          id: 'tc_' + Math.random().toString(36).substring(2, 8),
+          toolName: 'vector_search',
+          status: 'success',
+          executionTimeMs: 3,
+          arguments: { query: promptText.slice(0, 80), topK: 4 },
+          result: {
+            hits: vectorHits.map((h) => ({
+              chunk_id: h.chunk_id,
+              url: h.url,
+              similarity: h.similarity,
+              distance: h.distance,
+              excerpt: h.content.slice(0, 140),
+            })),
+          },
+          timestamp: Date.now(),
+        });
+      }
+
       // 2. Call server endpoint /api/ai/chat
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
@@ -604,6 +955,11 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
           model: selectedModel.id,
           persona,
           settings,
+          vectorContext: vectorHits.map((h) => ({
+            url: h.url,
+            content: h.content,
+            similarity: h.similarity,
+          })),
         }),
       });
 
@@ -627,6 +983,11 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
       };
 
       setMessages(prev => [...prev, assistantMsg]);
+      trackInteraction(
+        promptText,
+        toolCalls.map(tc => tc.toolName),
+        response.ok
+      );
     } catch (err: any) {
       setMessages(prev => [
         ...prev,
@@ -638,6 +999,11 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
           content: `Codex synthesized your request:\n\n\`\`\`html\n<!-- filepath: index.html -->\n${project.files[0]?.content || ''}\n\`\`\``,
         },
       ]);
+      trackInteraction(
+        promptText,
+        toolCalls.map(tc => tc.toolName),
+        false
+      );
     } finally {
       setIsLoading(false);
     }
@@ -820,6 +1186,7 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
             onChangeTab={setRightPanelTab}
             watchMode={watchMode}
             watchTestStatus={watchTestStatus}
+            onDeviceMode={onDeviceMount.mode}
             renderFileExplorer={
               <FileExplorerTab
                 files={project.files}
@@ -834,6 +1201,24 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
                   setActiveFilePath(path);
                   setRightPanelTab('code');
                 }}
+                onDeviceCapabilities={deviceCapabilities}
+                onDeviceMount={onDeviceMount}
+                onDeviceDiff={onDeviceDiff}
+                onMountNativeFolder={handleMountNativeFolder}
+                onReconnectSavedFolder={handleReconnectSavedFolder}
+                onConnectOpfs={handleConnectOpfsVolume}
+                onImportFolderFiles={handleImportFolderFiles}
+                onPushToDevice={handlePushToDevice}
+                onPullFromDevice={handlePullFromDevice}
+                onRefreshDeviceDiff={() => {
+                  if (deviceDirHandleRef.current) {
+                    refreshDeviceTree(deviceDirHandleRef.current);
+                  }
+                }}
+                onToggleDeviceAutoSync={() =>
+                  setOnDeviceMount((prev) => ({ ...prev, autoSync: !prev.autoSync }))
+                }
+                onDisconnectDevice={handleDisconnectDevice}
               />
             }
             renderContract={

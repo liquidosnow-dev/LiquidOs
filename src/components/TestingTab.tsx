@@ -175,18 +175,31 @@ export const TestingTab: React.FC<TestingTabProps> = ({
     };
   }, []);
 
+  const editorSectionRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     consoleEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [streamLogs]);
 
-  const loadTestSourceFile = async (filePath: string) => {
+  const loadTestSourceFile = async (
+    filePath: string,
+    pendingAppend?: { snippet: string; notice: string }
+  ) => {
+    loadedTestFileRef.current = filePath;
     try {
       const res = await fetch(`/api/tests/vitest/file?path=${encodeURIComponent(filePath)}`);
       if (res.ok) {
         const data = await res.json();
+        loadedTestFileRef.current = data.path;
         setLoadedTestFile(data.path);
-        setTestSourceCode(data.content);
         setSavedOriginalSource(data.content);
+        if (pendingAppend) {
+          setTestSourceCode(data.content.trimEnd() + pendingAppend.snippet);
+          setInspectorView('inspector');
+          setSaveNotice(pendingAppend.notice);
+        } else {
+          setTestSourceCode(data.content);
+        }
       }
     } catch {
       // Ignore transient errors
@@ -199,7 +212,7 @@ export const TestingTab: React.FC<TestingTabProps> = ({
   );
 
   useEffect(() => {
-    if (selectedTest?.suiteFile && selectedTest.suiteFile !== loadedTestFile) {
+    if (selectedTest?.suiteFile && selectedTest.suiteFile !== loadedTestFileRef.current) {
       loadTestSourceFile(selectedTest.suiteFile);
     }
   }, [selectedTest?.suiteFile]);
@@ -452,12 +465,43 @@ export const TestingTab: React.FC<TestingTabProps> = ({
     };
   }, [watchMode]);
 
-  const handleAppendProgressiveProbe = (targetModulePath: string, uncoveredLines: number[]) => {
+  const buildProgressiveSnippet = (targetModulePath: string, uncoveredLines: number[]) => {
     const lineRef = uncoveredLines.slice(0, 4).join(', ');
     const snippet = `\n\ntest('Progressive path guard for ${targetModulePath.split('/').pop()} (lines ${lineRef || 'edge'})', () => {\n  // Covers previously unexercised progressive edge path\n  assert.ok(true, 'Replace with assertion targeting lines ${lineRef || 'uncovered'}');\n});\n`;
+    const notice = `Added progressive test scaffold targeting ${targetModulePath} (lines ${lineRef || 'edge'}). Review and click "Save & Re-Run Suite".`;
+    return { snippet, notice };
+  };
+
+  const handleAppendProgressiveProbe = (targetModulePath: string, uncoveredLines: number[]) => {
+    const { snippet, notice } = buildProgressiveSnippet(targetModulePath, uncoveredLines);
     setTestSourceCode((prev) => prev.trimEnd() + snippet);
     setInspectorView('inspector');
-    setSaveNotice(`Added progressive test scaffold targeting ${targetModulePath} (lines ${lineRef || 'edge'}). Review and click "Save & Re-Run Suite".`);
+    setSaveNotice(notice);
+    setTimeout(() => {
+      editorSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 60);
+  };
+
+  const handleGenerateProgressiveGuardFromDrawer = async (
+    targetModulePath: string,
+    candidateSuitePath: string,
+    uncoveredLines: number[]
+  ) => {
+    const { snippet, notice } = buildProgressiveSnippet(targetModulePath, uncoveredLines);
+    const matchingTest = tests.find((t) => t.suiteFile === candidateSuitePath);
+    if (matchingTest) {
+      setSelectedTestId(matchingTest.id);
+    }
+    setSelectedSuiteFilter(candidateSuitePath);
+    if (loadedTestFileRef.current !== candidateSuitePath) {
+      await loadTestSourceFile(candidateSuitePath, { snippet, notice });
+    } else {
+      handleAppendProgressiveProbe(targetModulePath, uncoveredLines);
+      return;
+    }
+    setTimeout(() => {
+      editorSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 60);
   };
 
   const filteredTests = useMemo(() => {
@@ -510,7 +554,7 @@ export const TestingTab: React.FC<TestingTabProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-transparent text-slate-100 overflow-hidden">
+    <div className="flex flex-col h-full bg-transparent text-slate-100 overflow-y-auto">
       {/* Top Runner Controls (Tier 1 Glass) */}
       <div className="px-4 py-3 glass-surface-1 border-x-0 border-t-0 flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div className="min-w-0">
@@ -693,10 +737,11 @@ export const TestingTab: React.FC<TestingTabProps> = ({
           setSelectedSuiteFilter(suiteFile);
           runVitestStream(suiteFile, undefined, withCoverage, 'manual');
         }}
+        onGenerateProgressiveGuard={handleGenerateProgressiveGuardFromDrawer}
       />
 
       {/* Main Split Workspace: Left Test-by-Test Tree | Right Inspector / V8 Map / Live Console */}
-      <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 min-h-0 overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 min-h-[500px]">
         {/* Left Pane: Test Tree */}
         <div className="xl:col-span-5 flex flex-col border-b xl:border-b-0 xl:border-r border-white/10 min-h-0 overflow-hidden">
           <div className="px-3 py-2.5 border-b border-white/10 flex flex-wrap items-center gap-2 glass-surface-1 border-x-0 border-t-0 shrink-0">
@@ -1022,7 +1067,10 @@ export const TestingTab: React.FC<TestingTabProps> = ({
                   </div>
 
                   {/* Test Source Live Editor & Save/Re-Run Controls (Tier 3 Active Focus Glass) */}
-                  <div className="flex-1 flex flex-col min-h-0 rounded-xl glass-surface-3 overflow-hidden">
+                  <div
+                    ref={editorSectionRef}
+                    className="flex-1 flex flex-col min-h-[220px] rounded-xl glass-surface-3 overflow-hidden"
+                  >
                     <div className="px-3 py-2 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
                       <div className="flex items-center gap-2 text-xs font-mono">
                         <FileCode2 className="w-3.5 h-3.5 text-cyan-400" />

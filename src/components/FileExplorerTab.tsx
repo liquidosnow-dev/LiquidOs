@@ -21,8 +21,23 @@ import {
   ChevronDown,
   Code2,
   Layers,
+  FolderSync,
+  Database,
+  RefreshCw,
+  Unlink,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { CoalitionHandshakeModal } from './CoalitionHandshakeModal';
+import {
+  FileSystemCapabilities,
+  OnDeviceMountStatus,
+  DeviceSyncDiff,
+  formatBytes,
+  readWebkitDirectoryFileList,
+} from '../utils/onDeviceFs';
 
 interface FileExplorerTabProps {
   files: ProjectFile[];
@@ -32,6 +47,18 @@ interface FileExplorerTabProps {
   onDeleteFile?: (path: string) => void;
   onReferenceFileInChat?: (path: string) => void;
   onOpenInCodeEditor?: (path: string) => void;
+  onDeviceCapabilities?: FileSystemCapabilities;
+  onDeviceMount?: OnDeviceMountStatus;
+  onDeviceDiff?: DeviceSyncDiff | null;
+  onMountNativeFolder?: () => void;
+  onReconnectSavedFolder?: () => void;
+  onConnectOpfs?: () => void;
+  onImportFolderFiles?: (rootName: string, importedFiles: ProjectFile[]) => void;
+  onPushToDevice?: () => void;
+  onPullFromDevice?: () => void;
+  onRefreshDeviceDiff?: () => void;
+  onToggleDeviceAutoSync?: () => void;
+  onDisconnectDevice?: () => void;
 }
 
 interface TreeGroup {
@@ -57,6 +84,18 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
   onDeleteFile,
   onReferenceFileInChat,
   onOpenInCodeEditor,
+  onDeviceCapabilities,
+  onDeviceMount,
+  onDeviceDiff,
+  onMountNativeFolder,
+  onReconnectSavedFolder,
+  onConnectOpfs,
+  onImportFolderFiles,
+  onPushToDevice,
+  onPullFromDevice,
+  onRefreshDeviceDiff,
+  onToggleDeviceAutoSync,
+  onDisconnectDevice,
 }) => {
   const [filterQuery, setFilterQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
@@ -72,6 +111,7 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [isExportingTar, setIsExportingTar] = useState(false);
   const [isHandshakeOpen, setIsHandshakeOpen] = useState(false);
+  const [isDevicePanelOpen, setIsDevicePanelOpen] = useState(true);
 
   const filteredFiles = useMemo(
     () =>
@@ -254,7 +294,32 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          {onDeviceMount && (
+            <button
+              type="button"
+              onClick={() => setIsDevicePanelOpen((prev) => !prev)}
+              aria-expanded={isDevicePanelOpen}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap border ${
+                onDeviceMount.mode === 'native' || onDeviceMount.mode === 'opfs'
+                  ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200 hover:border-emerald-300/60'
+                  : 'glass-surface-2 border-white/10 text-cyan-200 hover:border-cyan-400/50'
+              }`}
+              title="Toggle On-Device File System Connectivity Panel"
+            >
+              <FolderSync className="w-3.5 h-3.5 text-cyan-300" />
+              <span>
+                {onDeviceMount.mode === 'native'
+                  ? `Host FS: ${onDeviceMount.mountName}`
+                  : onDeviceMount.mode === 'opfs'
+                  ? 'OPFS Disk: Connected'
+                  : onDeviceMount.mode === 'imported'
+                  ? `Imported: ${onDeviceMount.mountName}`
+                  : 'On-Device FS'}
+              </span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsHandshakeOpen(true)}
@@ -288,6 +353,245 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
           </button>
         </div>
       </div>
+
+      {/* On-Device File System Connectivity Panel */}
+      {isDevicePanelOpen && onDeviceMount && (
+        <div
+          className="px-4 py-3 border-b border-white/10 glass-surface-2 space-y-2.5 shrink-0"
+          data-testid="ondevice-fs-panel"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
+                {onDeviceMount.mode === 'native' || onDeviceMount.mode === 'opfs' ? (
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <Database className="w-4 h-4 text-cyan-400 shrink-0" />
+                )}
+                <span>On-Device File System</span>
+              </div>
+              <span className="text-slate-600">·</span>
+              <span className="text-[11px] font-mono tabular-nums text-slate-300">
+                {onDeviceMount.mode === 'disconnected'
+                  ? 'Not Connected (In-Memory Workspace)'
+                  : onDeviceMount.mode === 'native'
+                  ? `Host Folder "${onDeviceMount.mountName}" · ${onDeviceMount.permission.toUpperCase()}`
+                  : onDeviceMount.mode === 'opfs'
+                  ? `Origin Private File System (${onDeviceMount.mountName}) · SANDBOXED DISK`
+                  : `Imported Folder "${onDeviceMount.mountName}" · READ/MERGE`}
+              </span>
+              {onDeviceMount.quota && (
+                <>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-[11px] font-mono tabular-nums text-slate-400">
+                    Device Storage {formatBytes(onDeviceMount.quota.usageBytes)} /{' '}
+                    {formatBytes(onDeviceMount.quota.quotaBytes)}
+                  </span>
+                </>
+              )}
+              {onDeviceMount.lastSyncedAt && (
+                <>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-[11px] font-mono tabular-nums text-emerald-300">
+                    Synced {new Date(onDeviceMount.lastSyncedAt).toLocaleTimeString()}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Capability Matrix Summary */}
+            {onDeviceCapabilities && (
+              <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono text-slate-400">
+                <span
+                  className={
+                    onDeviceCapabilities.iframeRestricted
+                      ? 'text-amber-300'
+                      : onDeviceCapabilities.fileSystemAccess
+                      ? 'text-emerald-300'
+                      : 'text-slate-500'
+                  }
+                >
+                  Host Picker:{' '}
+                  {onDeviceCapabilities.iframeRestricted
+                    ? 'Iframe Restricted (Use OPFS or Open Standalone)'
+                    : onDeviceCapabilities.fileSystemAccess
+                    ? 'Supported'
+                    : 'Unsupported'}
+                </span>
+                <span>·</span>
+                <span className={onDeviceCapabilities.opfs ? 'text-cyan-300' : 'text-slate-500'}>
+                  OPFS Disk: {onDeviceCapabilities.opfs ? 'Ready' : 'Unavailable'}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Action Bar */}
+          <div className="flex flex-wrap items-center gap-2">
+            {onMountNativeFolder && (
+              <button
+                type="button"
+                onClick={onMountNativeFolder}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-cyan-400/50 text-xs font-medium text-white transition-colors cursor-pointer whitespace-nowrap"
+                title="Select a real folder on your device via Browser File System Access API"
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Mount Local Folder</span>
+              </button>
+            )}
+
+            {onDeviceMount.mode === 'disconnected' &&
+              onDeviceMount.savedHandleName &&
+              onReconnectSavedFolder && (
+                <button
+                  type="button"
+                  onClick={onReconnectSavedFolder}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-400/40 text-xs font-medium text-amber-200 hover:bg-amber-500/25 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Reconnect &ldquo;{onDeviceMount.savedHandleName}&rdquo;</span>
+                </button>
+              )}
+
+            {onConnectOpfs && (
+              <button
+                type="button"
+                onClick={onConnectOpfs}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-emerald-400/50 text-xs font-medium text-emerald-200 transition-colors cursor-pointer whitespace-nowrap"
+                title="Connect persistent on-device Origin Private File System (OPFS) disk"
+              >
+                <Database className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Connect OPFS Volume</span>
+              </button>
+            )}
+
+            {onImportFolderFiles && (
+              <label
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-white/25 text-xs font-medium text-slate-200 cursor-pointer transition-colors whitespace-nowrap"
+                title="Import an entire directory from your device via webkitdirectory"
+              >
+                <Folder className="w-3.5 h-3.5 text-violet-300" />
+                <span>Import Folder</span>
+                <input
+                  type="file"
+                  multiple
+                  // @ts-expect-error webkitdirectory is supported in Chromium/Firefox/Safari
+                  webkitdirectory=""
+                  directory=""
+                  className="hidden"
+                  onChange={async (e) => {
+                    const list = e.target.files;
+                    if (!list || list.length === 0) return;
+                    const parsed = await readWebkitDirectoryFileList(list);
+                    onImportFolderFiles(parsed.rootFolderName, parsed.files);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
+
+            {(onDeviceMount.mode === 'native' || onDeviceMount.mode === 'opfs') && (
+              <>
+                <div className="h-4 w-px bg-white/10 mx-0.5 hidden sm:block" />
+
+                {onPushToDevice && (
+                  <button
+                    type="button"
+                    onClick={onPushToDevice}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cyan-600/80 hover:bg-cyan-500 text-white text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap"
+                    title="Write all workspace files to connected on-device folder/OPFS"
+                  >
+                    <ArrowUpToLine className="w-3.5 h-3.5" />
+                    <span>Push to Device</span>
+                  </button>
+                )}
+
+                {onPullFromDevice && (
+                  <button
+                    type="button"
+                    onClick={onPullFromDevice}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-cyan-400/50 text-xs font-medium text-cyan-200 transition-colors cursor-pointer whitespace-nowrap"
+                    title="Load files from connected on-device folder/OPFS into workspace"
+                  >
+                    <ArrowDownToLine className="w-3.5 h-3.5" />
+                    <span>Pull to Workspace</span>
+                  </button>
+                )}
+
+                {onRefreshDeviceDiff && (
+                  <button
+                    type="button"
+                    onClick={onRefreshDeviceDiff}
+                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg glass-surface-1 hover:border-white/25 text-xs font-mono text-slate-300 transition-colors cursor-pointer whitespace-nowrap"
+                    title="Re-scan connected on-device files and refresh diff"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Scan</span>
+                  </button>
+                )}
+
+                {onToggleDeviceAutoSync && (
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={onDeviceMount.autoSync}
+                    onClick={onToggleDeviceAutoSync}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap border ${
+                      onDeviceMount.autoSync
+                        ? 'bg-violet-500/20 border-violet-400/50 text-violet-200'
+                        : 'glass-surface-1 border-white/10 text-slate-400'
+                    }`}
+                    title="Automatically write-through file edits and creations to the connected device storage"
+                  >
+                    <FolderSync className="w-3.5 h-3.5" />
+                    <span>Auto-Sync: {onDeviceMount.autoSync ? 'ON' : 'OFF'}</span>
+                  </button>
+                )}
+
+                {onDisconnectDevice && (
+                  <button
+                    type="button"
+                    onClick={onDisconnectDevice}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-rose-400/50 text-xs font-medium text-rose-300 transition-colors cursor-pointer whitespace-nowrap"
+                    title="Disconnect on-device mount"
+                  >
+                    <Unlink className="w-3.5 h-3.5" />
+                    <span>Disconnect</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Diff / Notice Banner */}
+          {(onDeviceDiff || onDeviceMount.lastNotice || onDeviceMount.lastError) && (
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] font-mono tabular-nums">
+              <div className="flex flex-wrap items-center gap-2">
+                {onDeviceMount.lastError ? (
+                  <span className="flex items-center gap-1.5 text-amber-300">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{onDeviceMount.lastError}</span>
+                  </span>
+                ) : onDeviceMount.lastNotice ? (
+                  <span className="text-cyan-300">{onDeviceMount.lastNotice}</span>
+                ) : null}
+              </div>
+
+              {onDeviceDiff && (
+                <div className="flex flex-wrap items-center gap-2 text-slate-300">
+                  <span className="text-emerald-300">={onDeviceDiff.unchanged.length} synced</span>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-cyan-300">+{onDeviceDiff.toCreate.length} local only</span>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-amber-300">~{onDeviceDiff.toUpdate.length} modified</span>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-violet-300">{onDeviceDiff.deviceOnly.length} on disk only</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {uploadSuccess && (
         <div className="px-4 py-2 bg-emerald-950/60 border-b border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 shrink-0">
