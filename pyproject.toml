@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "an-nexus"
+version = "4.2.0"
+description = "Atomic Nexus v4.2 evidence-integrity + continuity + access-transfer toolchain"
+requires-python = ">=3.10"
+dependencies = ["cryptography>=42"]
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+an-preflight       = "an_nexus.cli:preflight"
+an-emit-manifest   = "an_nexus.cli:emit_manifest"
+an-verify-annex    = "an_nexus.cli:verify_annex"
+an-gen-key         = "an_nexus.cli:gen_key"
+an-create-anchor   = "an_nexus.cli:create_anchor"
+an-verify-chain    = "an_nexus.cli:verify_chain"
+an-issue-access    = "an_nexus.cli:issue_access"
+an-transfer-access = "an_nexus.cli:transfer_access"
+an-audit-append    = "an_nexus.cli:audit_append"
+an-audit-verify    = "an_nexus.cli:audit_verify"
+an-summary         = "an_nexus.cli:continuity_summary"
+an-demo            = "an_nexus.cli:demo"
+an-smoke           = "an_nexus.cli:smoke"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["an_nexus*", "scripts*"]
+
+[tool.setuptools.package-data]
+an_nexus = ["py.typed"]

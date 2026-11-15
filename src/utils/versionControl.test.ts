@@ -1,12 +1,19 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { createCommit, rollbackToCommit, computeLineDiff, generateCommitHash } from './versionControl';
+import {
+  createCommit,
+  rollbackToCommit,
+  computeLineDiff,
+  generateCommitHash,
+  verifyCommitIntegrity,
+} from './versionControl';
 import { Project } from '../types';
 
-test('generateCommitHash produces consistent hexadecimal string', () => {
-  const hash1 = generateCommitHash('initial commit', 'Mercy', [], null);
-  assert.equal(typeof hash1, 'string');
-  assert.equal(hash1.length >= 8, true);
+test('generateCommitHash produces consistent 64-char SHA-256 hexadecimal string', () => {
+  const hash1 = generateCommitHash('initial commit', 'Mercy', [], null, 1000);
+  const hash2 = generateCommitHash('initial commit', 'Mercy', [], null, 1000);
+  assert.equal(hash1.length, 64);
+  assert.equal(hash1, hash2);
 });
 
 test('createCommit creates a new commit and updates project state', () => {
@@ -37,28 +44,86 @@ test('createCommit creates a new commit and updates project state', () => {
   assert.equal(project.branches.main.currentCommitId, commit.id);
   assert.equal(commit.message, 'First feature commit');
   assert.equal(commit.files[0].content, '<h1>Hello World</h1>');
+  assert.equal(verifyCommitIntegrity(commit).valid, true);
 });
 
-test('rollbackToCommit restores exact file contents from prior commit', () => {
+test('verifyCommitIntegrity detects provenance mutation, claimStatus spoofing, and rogue fileHashes keys', () => {
+  const baseProject: Project = {
+    id: 'proj_sec',
+    name: 'Provenance Test',
+    description: '',
+    currentBranch: 'main',
+    branches: { main: { name: 'main', currentCommitId: '' } },
+    commits: [],
+    files: [
+      { name: 'a.ts', path: 'src/a.ts', language: 'typescript', content: 'export const a = 1;', lastModified: 1000 },
+    ],
+    createdAt: 1000,
+    updatedAt: 1000,
+  };
+
+  const { commit } = createCommit(baseProject, 'Ingest drop', 'Mercy (User)', {
+    source: 'external_drop',
+    claimStatus: 'untested',
+    authorizationPermitId: 'perm_abc',
+    epoch: 2,
+    fencingVersion: 5,
+  });
+
+  assert.equal(verifyCommitIntegrity(commit).valid, true);
+
+  // Spoof claimStatus from untested -> tested without updating hash
+  const spoofedClaim = {
+    ...commit,
+    provenance: { ...commit.provenance!, claimStatus: 'tested' as const },
+  };
+  assert.equal(verifyCommitIntegrity(spoofedClaim).valid, false);
+
+  // Spoof permit ID
+  const spoofedPermit = {
+    ...commit,
+    provenance: { ...commit.provenance!, authorizationPermitId: 'perm_forged' },
+  };
+  assert.equal(verifyCommitIntegrity(spoofedPermit).valid, false);
+
+  // Extra rogue fileHashes entry
+  const extraHashKey = {
+    ...commit,
+    fileHashes: { ...commit.fileHashes!, 'evil.ts': '0'.repeat(64) },
+  };
+  assert.equal(verifyCommitIntegrity(extraHashKey).valid, false);
+});
+
+test('rollbackToCommit restores exact file contents from verified commit and blocks tampered commits', () => {
   const fileV1 = [{ name: 'app.js', path: 'app.js', language: 'javascript' as const, content: 'const v = 1;', lastModified: 100 }];
   const fileV2 = [{ name: 'app.js', path: 'app.js', language: 'javascript' as const, content: 'const v = 2;', lastModified: 200 }];
 
-  const initialProject: Project = {
+  const baseProject: Project = {
     id: 'proj_1',
     name: 'Rollback Test',
     description: '',
     currentBranch: 'main',
-    branches: { main: { name: 'main', currentCommitId: 'c_1' } },
-    commits: [
-      { id: 'c_1', message: 'v1', author: 'Mercy', timestamp: 100, files: fileV1, hash: 'h1', parentHash: null },
-    ],
-    files: fileV2,
+    branches: { main: { name: 'main', currentCommitId: '' } },
+    commits: [],
+    files: fileV1,
     createdAt: 100,
-    updatedAt: 200,
+    updatedAt: 100,
   };
 
-  const restoredProject = rollbackToCommit(initialProject, 'c_1');
+  const { project: withV1, commit: c1 } = createCommit(baseProject, 'v1', 'Mercy');
+  const { project: withV2 } = createCommit({ ...withV1, files: fileV2 }, 'v2', 'Mercy');
+
+  const restoredProject = rollbackToCommit(withV2, c1.id);
   assert.equal(restoredProject.files[0].content, 'const v = 1;');
+
+  // Corrupt target commit -> rollback must fail closed
+  const tamperedProj: Project = {
+    ...withV2,
+    commits: withV2.commits.map((c) =>
+      c.id === c1.id ? { ...c, provenance: { ...c.provenance!, claimStatus: 'tested' as const } } : c
+    ),
+  };
+  assert.throws(() => rollbackToCommit(tamperedProj, c1.id), /integrity verification/i);
 });
 
 test('computeLineDiff identifies additions and removals', () => {

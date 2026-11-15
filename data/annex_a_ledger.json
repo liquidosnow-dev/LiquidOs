@@ -1,0 +1,32 @@
+{
+  "schema": "an-nexus.annex-a.v4",
+  "description": "Annex A contract JCS digest ledger (includes G6 anomaly on GLOBAL-MODE-001 until remediated)",
+  "entries": [
+    {
+      "id": "AN-EVC-001",
+      "artifact": "an_evc_001_contract.json",
+      "jcs_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "id": "PVA-001",
+      "artifact": "pva_001_contract.json",
+      "jcs_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    {
+      "id": "GLOBAL-MODE-001",
+      "artifact": "global_mode_001_contract.json",
+      "jcs_sha256": "33333333333333333333333333333333333333333333333333333333333333330",
+      "note": "G6 anomaly: 65-character JCS digest blocks pipeline until regenerated and verified against frozen contract."
+    },
+    {
+      "id": "IAM-001",
+      "artifact": "iam_001_contract.json",
+      "jcs_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    {
+      "id": "MCP-001",
+      "artifact": "mcp_001_contract.json",
+      "jcs_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+    }
+  ]
+}

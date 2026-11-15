@@ -7,6 +7,7 @@ import {
   pushTelemetryEvent,
   recordInteraction,
   resolveSentimentTelemetryUrl,
+  SessionTelemetryStats,
   TelemetryTriggerReason,
 } from '../services/sentimentStore';
 
@@ -31,21 +32,41 @@ export function getTelemetryEndpointFromProcessOrVite(override?: string): string
   });
 }
 
+export function computeSessionStatsSnapshot(
+  sessionRecords: InteractionRecord[],
+  sessionStartedAt: number
+): SessionTelemetryStats {
+  const sessionInteractions = sessionRecords.length;
+  const sessionResolved = sessionRecords.filter((r) => r.resolved).length;
+  const totalTime = sessionRecords.reduce((acc, r) => acc + r.responseTimeMs, 0);
+  return {
+    sessionInteractions,
+    sessionResolved,
+    sessionAverageResponseTimeMs:
+      sessionInteractions > 0 ? Math.round(totalTime / sessionInteractions) : 0,
+    sessionDurationMs: Math.max(0, Date.now() - sessionStartedAt),
+  };
+}
+
 export function dispatchAggregatedSentiment(
   trigger: TelemetryTriggerReason,
   latestRecord?: InteractionRecord,
-  endpointOverride?: string
+  endpointOverride?: string,
+  sessionStats?: SessionTelemetryStats,
+  preferBeacon: boolean = trigger === 'session_close'
 ): Promise<boolean> {
   const endpoint = getTelemetryEndpointFromProcessOrVite(endpointOverride);
   if (!endpoint) {
     return Promise.resolve(false);
   }
   const summary = computeSentimentMetrics(getStoredInteractions());
-  return pushTelemetryEvent(latestRecord, summary, endpoint, trigger);
+  return pushTelemetryEvent(latestRecord, summary, endpoint, trigger, sessionStats, preferBeacon);
 }
 
 export function useAssistantSentiment(options?: UseAssistantSentimentOptions) {
   const startTimeRef = useRef<number>(Date.now());
+  const sessionStartRef = useRef<number>(Date.now());
+  const sessionRecordsRef = useRef<InteractionRecord[]>([]);
   const telemetryOverride = options?.telemetryUrl;
   const hasSessionActivityRef = useRef<boolean>(false);
   const lastRecordRef = useRef<InteractionRecord | undefined>(undefined);
@@ -54,19 +75,45 @@ export function useAssistantSentiment(options?: UseAssistantSentimentOptions) {
     startTimeRef.current = Date.now();
   }, []);
 
-  const flushSessionTelemetry = useCallback(() => {
-    if (!hasSessionActivityRef.current) return Promise.resolve(false);
-    hasSessionActivityRef.current = false;
-    return dispatchAggregatedSentiment('session_close', lastRecordRef.current, telemetryOverride);
-  }, [telemetryOverride]);
+  const getSessionStats = useCallback((): SessionTelemetryStats => {
+    return computeSessionStatsSnapshot(sessionRecordsRef.current, sessionStartRef.current);
+  }, []);
+
+  const flushSessionTelemetry = useCallback(
+    (preferBeacon: boolean = true) => {
+      if (!hasSessionActivityRef.current) return Promise.resolve(false);
+      hasSessionActivityRef.current = false;
+      const stats = computeSessionStatsSnapshot(
+        sessionRecordsRef.current,
+        sessionStartRef.current
+      );
+      sessionRecordsRef.current = [];
+      sessionStartRef.current = Date.now();
+      return dispatchAggregatedSentiment(
+        'session_close',
+        lastRecordRef.current,
+        telemetryOverride,
+        stats,
+        preferBeacon
+      );
+    },
+    [telemetryOverride]
+  );
 
   const trackInteraction = useCallback(
-    (prompt: string, toolInvocations: string[] = [], resolved: boolean = true): InteractionRecord => {
+    (
+      prompt: string,
+      toolInvocations: string[] = [],
+      resolved: boolean = true
+    ): InteractionRecord | null => {
+      const normalizedPrompt = prompt.trim();
+      if (!normalizedPrompt) return null;
+
       const responseTimeMs = Math.max(0, Date.now() - startTimeRef.current);
-      const sentiment = classifySentiment(prompt);
+      const sentiment = classifySentiment(normalizedPrompt);
 
       const record: Omit<InteractionRecord, 'id' | 'timestamp'> = {
-        promptLength: prompt.length,
+        promptLength: normalizedPrompt.length,
         sentiment,
         responseTimeMs,
         toolInvocations,
@@ -75,10 +122,21 @@ export function useAssistantSentiment(options?: UseAssistantSentimentOptions) {
 
       const savedRecord = recordInteraction(record);
       lastRecordRef.current = savedRecord;
+      sessionRecordsRef.current.push(savedRecord);
       hasSessionActivityRef.current = true;
 
       if (resolved) {
-        void dispatchAggregatedSentiment('resolved', savedRecord, telemetryOverride);
+        const stats = computeSessionStatsSnapshot(
+          sessionRecordsRef.current,
+          sessionStartRef.current
+        );
+        void dispatchAggregatedSentiment(
+          'resolved',
+          savedRecord,
+          telemetryOverride,
+          stats,
+          false
+        );
       }
 
       return savedRecord;
@@ -89,13 +147,21 @@ export function useAssistantSentiment(options?: UseAssistantSentimentOptions) {
   useEffect(() => {
     const handleSessionClose = () => {
       if (!hasSessionActivityRef.current) return;
-      hasSessionActivityRef.current = false;
-      void dispatchAggregatedSentiment('session_close', lastRecordRef.current, telemetryOverride);
+      void flushSessionTelemetry(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        handleSessionClose();
+      }
     };
 
     if (typeof window !== 'undefined') {
       window.addEventListener('pagehide', handleSessionClose);
       window.addEventListener('beforeunload', handleSessionClose);
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
     }
 
     return () => {
@@ -103,13 +169,17 @@ export function useAssistantSentiment(options?: UseAssistantSentimentOptions) {
         window.removeEventListener('pagehide', handleSessionClose);
         window.removeEventListener('beforeunload', handleSessionClose);
       }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
       handleSessionClose();
     };
-  }, [telemetryOverride]);
+  }, [flushSessionTelemetry]);
 
   return {
     startInteractionTimer,
     trackInteraction,
     flushSessionTelemetry,
+    getSessionStats,
   };
 }

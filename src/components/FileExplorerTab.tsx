@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { ProjectFile } from '../types';
 import {
   Folder,
@@ -8,6 +8,7 @@ import {
   FileJson,
   Download,
   Upload,
+  FileUp,
   Search,
   Plus,
   Trash2,
@@ -29,21 +30,34 @@ import {
   ArrowDownToLine,
   AlertCircle,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import { CoalitionHandshakeModal } from './CoalitionHandshakeModal';
 import {
   FileSystemCapabilities,
   OnDeviceMountStatus,
   DeviceSyncDiff,
+  DropSkippedFile,
+  DropImportResult,
   formatBytes,
   readWebkitDirectoryFileList,
+  readDroppedFiles,
+  readDroppedDataTransfer,
 } from '../utils/onDeviceFs';
+import {
+  ControlPlaneState,
+  SnapshotValidationReport,
+  WatchVerificationReport,
+} from '../utils/ingestionControlPlane';
 
 interface FileExplorerTabProps {
   files: ProjectFile[];
   activeFilePath: string;
   onSelectFile: (path: string) => void;
   onAddFile?: (path: string, content: string) => void;
+  onUploadFiles?: (
+    files: ProjectFile[]
+  ) => void | Promise<void | { ok: boolean; error?: string; commitHash?: string }>;
   onDeleteFile?: (path: string) => void;
   onReferenceFileInChat?: (path: string) => void;
   onOpenInCodeEditor?: (path: string) => void;
@@ -59,6 +73,13 @@ interface FileExplorerTabProps {
   onRefreshDeviceDiff?: () => void;
   onToggleDeviceAutoSync?: () => void;
   onDisconnectDevice?: () => void;
+  controlPlaneState?: ControlPlaneState;
+  onTransitionGlobalMode?: (nextMode: 'ACTIVE' | 'RESTRICTED' | 'LOCKDOWN', reason?: string) => void;
+  onIssuePermit?: () => void;
+  pendingSyncFiles?: ProjectFile[];
+  onRetryFailedSync?: () => void;
+  lastSnapshotValidation?: SnapshotValidationReport | null;
+  lastWatchVerification?: WatchVerificationReport | null;
 }
 
 interface TreeGroup {
@@ -81,6 +102,7 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
   activeFilePath,
   onSelectFile,
   onAddFile,
+  onUploadFiles,
   onDeleteFile,
   onReferenceFileInChat,
   onOpenInCodeEditor,
@@ -96,6 +118,13 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
   onRefreshDeviceDiff,
   onToggleDeviceAutoSync,
   onDisconnectDevice,
+  controlPlaneState,
+  onTransitionGlobalMode,
+  onIssuePermit,
+  pendingSyncFiles = [],
+  onRetryFailedSync,
+  lastSnapshotValidation,
+  lastWatchVerification,
 }) => {
   const [filterQuery, setFilterQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({
@@ -106,12 +135,30 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
     root: true,
   });
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dropSkippedNotice, setDropSkippedNotice] = useState<DropSkippedFile[]>([]);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [isProcessingDrop, setIsProcessingDrop] = useState(false);
+  const [dropTargetDir, setDropTargetDir] = useState<string>('');
+  const dragDepthRef = useRef(0);
+  const dropInputRef = useRef<HTMLInputElement | null>(null);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState('');
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [isExportingTar, setIsExportingTar] = useState(false);
   const [isHandshakeOpen, setIsHandshakeOpen] = useState(false);
   const [isDevicePanelOpen, setIsDevicePanelOpen] = useState(true);
+
+  const targetFolderOptions = useMemo(() => {
+    const set = new Set<string>(['', 'uploads', 'src', 'verification-tools', 'schemas', 'tests']);
+    for (const f of files) {
+      const slashIdx = f.path.indexOf('/');
+      if (slashIdx > 0) {
+        set.add(f.path.slice(0, slashIdx));
+      }
+    }
+    return Array.from(set);
+  }, [files]);
 
   const filteredFiles = useMemo(
     () =>
@@ -219,26 +266,114 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
     setTimeout(() => setCopiedPath(null), 2000);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const hasFilesInDrag = (dt: DataTransfer | null): boolean => {
+    if (!dt) return false;
+    if (dt.types && Array.from(dt.types).includes('Files')) return true;
+    return Boolean(dt.files && dt.files.length > 0);
+  };
+
+  const ingestUploadedResult = async (resultPromise: Promise<DropImportResult>) => {
+    setIsProcessingDrop(true);
+    setUploadError(null);
+    try {
+      const { files: imported, skipped } = await resultPromise;
+      setDropSkippedNotice(skipped);
+
+      if (imported.length > 0) {
+        let commitResult: void | { ok: boolean; error?: string; commitHash?: string } = undefined;
+        if (onUploadFiles) {
+          commitResult = await onUploadFiles(imported);
+        } else if (onAddFile) {
+          for (const f of imported) {
+            onAddFile(f.path, f.content);
+          }
+          onSelectFile(imported[0].path);
+        }
+
+        if (commitResult && commitResult.ok === false) {
+          setUploadError(commitResult.error || 'Upload blocked by GLOBAL-MODE-001 / IAM-001.');
+          return;
+        }
+
+        setExpandedFolders((prev) => {
+          const next = { ...prev };
+          for (const f of imported) {
+            const slashIdx = f.path.indexOf('/');
+            const top = slashIdx === -1 ? 'root' : f.path.slice(0, slashIdx);
+            next[top] = true;
+          }
+          return next;
+        });
+
+        const destLabel = dropTargetDir
+          ? `/home/user/webapp/${dropTargetDir}/`
+          : '/home/user/webapp/';
+        const totalDroppedBytes = imported.reduce((acc, f) => acc + f.content.length, 0);
+        const hashNote =
+          commitResult && commitResult.commitHash
+            ? ` · commit ${commitResult.commitHash.slice(0, 8)} (untested)`
+            : '';
+        setUploadSuccess(
+          `Added ${imported.length} file${imported.length === 1 ? '' : 's'} (${formatBytes(totalDroppedBytes)}) into ${destLabel}${hashNote}`
+        );
+        setTimeout(() => setUploadSuccess(null), 5000);
+      } else if (skipped.length > 0) {
+        setUploadError(`No text source files imported (${skipped.length} skipped).`);
+      }
+    } catch (err: any) {
+      setUploadError(err?.message || 'Failed to read dropped files.');
+    } finally {
+      setIsProcessingDrop(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFiles = e.target.files;
     if (!uploadedFiles || uploadedFiles.length === 0) return;
-    const file = uploadedFiles[0];
-    const reader = new FileReader();
+    await ingestUploadedResult(
+      readDroppedFiles(uploadedFiles, dropTargetDir, 200, [], {
+        existingWorkspacePaths: files.map((f) => f.path),
+      })
+    );
+    e.target.value = '';
+  };
 
-    if (file.name.endsWith('.zip') || file.name.endsWith('.tar.gz')) {
-      setUploadSuccess(`Archive ${file.name} extracted into /home/user/webapp`);
-      setTimeout(() => setUploadSuccess(null), 4000);
-    } else {
-      reader.onload = (event) => {
-        const content = (event.target?.result as string) || '';
-        if (onAddFile) {
-          onAddFile('uploads/' + file.name, content);
-        }
-        setUploadSuccess(`Uploaded ${file.name} to /home/user/webapp/uploads/`);
-        setTimeout(() => setUploadSuccess(null), 4000);
-      };
-      reader.readAsText(file);
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current += 1;
+    setIsDragActive(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDragActive(false);
     }
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasFilesInDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDragActive(false);
+    await ingestUploadedResult(
+      readDroppedDataTransfer(e.dataTransfer, dropTargetDir, 200, undefined, undefined, {
+        existingWorkspacePaths: files.map((f) => f.path),
+      })
+    );
   };
 
   const handleCreateNewFile = (e: React.FormEvent) => {
@@ -279,7 +414,37 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
   const totalLines = files.reduce((acc, f) => acc + f.content.split('\n').length, 0);
 
   return (
-    <div className="flex flex-col h-full bg-transparent text-slate-200 overflow-hidden">
+    <div
+      className="relative flex flex-col h-full bg-transparent text-slate-200 overflow-hidden"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      data-testid="file-explorer-container"
+    >
+      {/* Full-Workspace Drag-Over Highlight Overlay */}
+      {isDragActive && (
+        <div
+          className="pointer-events-none absolute inset-0 z-30 bg-slate-950/85 backdrop-blur-sm border-2 border-dashed border-cyan-400 flex items-center justify-center p-6"
+          data-testid="file-drop-overlay"
+        >
+          <div className="max-w-md w-full rounded-2xl border border-cyan-400/50 bg-slate-900/90 px-6 py-7 text-center shadow-2xl">
+            <div className="w-12 h-12 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center mx-auto mb-3">
+              <FileUp className="w-6 h-6 text-cyan-300" />
+            </div>
+            <div className="text-sm font-semibold text-white">
+              Drop files or folders into active workspace
+            </div>
+            <div className="mt-1.5 text-xs font-mono text-cyan-300 truncate">
+              Destination: /home/user/webapp/{dropTargetDir ? `${dropTargetDir}/` : ''}
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400">
+              Text &amp; source files up to 1 MB · Skips node_modules, .git &amp; binaries automatically
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Master Showcase Header */}
       <div className="flex flex-wrap items-center justify-between px-4 py-3 glass-surface-1 border-x-0 border-t-0 shrink-0 gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -330,14 +495,14 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
             <span>Coalition Handshake</span>
           </button>
 
-          <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-white/20 text-xs font-medium text-slate-200 cursor-pointer transition-colors whitespace-nowrap">
+          <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-white/20 text-xs font-medium text-slate-200 cursor-pointer transition-colors whitespace-nowrap shrink-0">
             <Upload className="w-3.5 h-3.5 text-cyan-400" />
             <span>Upload</span>
             <input
               type="file"
+              multiple
               onChange={handleFileUpload}
               className="hidden"
-              accept=".js,.mjs,.ts,.tsx,.py,.json,.jsonc,.html,.css,.md,.zip,.tar.gz"
             />
           </label>
 
@@ -590,13 +755,169 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
               )}
             </div>
           )}
+
+          {/* Control-Plane Gate (GLOBAL-MODE-001 / IAM-001) & Recovery Bar */}
+          {controlPlaneState && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-[11px] font-mono tabular-nums"
+              data-testid="control-plane-gate-bar"
+            >
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                <span
+                  className={
+                    controlPlaneState.mode === 'ACTIVE' && controlPlaneState.activePermit
+                      ? 'text-emerald-300 font-semibold'
+                      : controlPlaneState.mode === 'LOCKDOWN'
+                      ? 'text-rose-400 font-semibold'
+                      : 'text-amber-300 font-semibold'
+                  }
+                >
+                  GLOBAL-MODE-001: {controlPlaneState.mode}
+                </span>
+                <span className="text-slate-600">·</span>
+                <span className="text-slate-300">epoch {controlPlaneState.epoch}</span>
+                <span className="text-slate-600">·</span>
+                <span className={controlPlaneState.activePermit ? 'text-cyan-300' : 'text-rose-300'}>
+                  {controlPlaneState.activePermit
+                    ? `IAM-001 fence v${controlPlaneState.activePermit.fencingVersion}`
+                    : 'No active permit (fail-closed)'}
+                </span>
+                {lastSnapshotValidation && (
+                  <>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-slate-400">
+                      Snapshot {lastSnapshotValidation.treeDigest.slice(0, 8)} ({lastSnapshotValidation.evidenceEnvelope.claimStatus})
+                    </span>
+                  </>
+                )}
+                {lastWatchVerification && (
+                  <>
+                    <span className="text-slate-600">·</span>
+                    <span
+                      className={
+                        lastWatchVerification.allPassed ? 'text-emerald-300' : 'text-amber-300'
+                      }
+                      title={
+                        lastWatchVerification.serverReceipt
+                          ? `${lastWatchVerification.claimScope} · Ed25519 receipt ${lastWatchVerification.serverReceipt.receiptId}`
+                          : lastWatchVerification.claimScope
+                      }
+                    >
+                      Watch Check {lastWatchVerification.entries.filter((e) => e.passed).length}/
+                      {lastWatchVerification.entries.length} (
+                      {lastWatchVerification.claimLevel || lastWatchVerification.claimStatus}
+                      {lastWatchVerification.serverReceipt ? ' · Ed25519' : ''})
+                    </span>
+                  </>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                {pendingSyncFiles.length > 0 && onRetryFailedSync && (
+                  <button
+                    type="button"
+                    onClick={onRetryFailedSync}
+                    className="px-2 py-1 rounded bg-amber-500/20 border border-amber-400/40 text-amber-200 hover:bg-amber-500/30 cursor-pointer whitespace-nowrap"
+                  >
+                    Retry Sync ({pendingSyncFiles.length})
+                  </button>
+                )}
+                {onTransitionGlobalMode && controlPlaneState.mode !== 'LOCKDOWN' && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onTransitionGlobalMode('LOCKDOWN', 'Operator triggered containment lockdown')
+                    }
+                    className="px-2 py-1 rounded glass-surface-1 border border-rose-500/30 text-rose-300 hover:border-rose-400/60 cursor-pointer whitespace-nowrap"
+                  >
+                    Lockdown
+                  </button>
+                )}
+                {onTransitionGlobalMode && controlPlaneState.mode !== 'ACTIVE' && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onTransitionGlobalMode('ACTIVE', 'Operator restored ACTIVE mode')
+                    }
+                    className="px-2 py-1 rounded glass-surface-1 border border-emerald-500/30 text-emerald-300 hover:border-emerald-400/60 cursor-pointer whitespace-nowrap"
+                  >
+                    Restore ACTIVE
+                  </button>
+                )}
+                {onIssuePermit &&
+                  controlPlaneState.mode === 'ACTIVE' &&
+                  !controlPlaneState.activePermit && (
+                    <button
+                      type="button"
+                      onClick={onIssuePermit}
+                      className="px-2 py-1 rounded bg-cyan-600/80 hover:bg-cyan-500 text-white cursor-pointer whitespace-nowrap"
+                    >
+                      Issue Permit
+                    </button>
+                  )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {uploadSuccess && (
-        <div className="px-4 py-2 bg-emerald-950/60 border-b border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 shrink-0">
-          <PackageCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span className="truncate">{uploadSuccess}</span>
+        <div className="px-4 py-2 bg-emerald-950/60 border-b border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <PackageCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="truncate">{uploadSuccess}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setUploadSuccess(null)}
+            className="p-0.5 text-emerald-400 hover:text-white cursor-pointer shrink-0"
+            aria-label="Dismiss upload success message"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {uploadError && (
+        <div className="px-4 py-2 bg-amber-950/60 border-b border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="truncate">{uploadError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setUploadError(null)}
+            className="p-0.5 text-amber-300 hover:text-white cursor-pointer shrink-0"
+            aria-label="Dismiss upload error"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {dropSkippedNotice.length > 0 && (
+        <div
+          className="px-4 py-2 bg-slate-900/90 border-b border-white/10 text-[11px] font-mono text-slate-300 flex items-center justify-between gap-3 shrink-0"
+          data-testid="drop-skipped-banner"
+        >
+          <div className="min-w-0 truncate">
+            Skipped {dropSkippedNotice.length} item{dropSkippedNotice.length === 1 ? '' : 's'}:{' '}
+            <span className="text-amber-300">
+              {dropSkippedNotice
+                .slice(0, 3)
+                .map((s) => `${s.name} (${s.reason})`)
+                .join(' · ')}
+              {dropSkippedNotice.length > 3 ? ` · +${dropSkippedNotice.length - 3} more` : ''}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDropSkippedNotice([])}
+            className="p-0.5 text-slate-400 hover:text-white cursor-pointer shrink-0"
+            aria-label="Dismiss skipped files notice"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
@@ -650,8 +971,76 @@ export const FileExplorerTab: React.FC<FileExplorerTabProps> = ({
 
       {/* Split Showcase: Hierarchical Tree (left) + Live Source Inspector (right) */}
       <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 min-h-0 overflow-hidden">
-        {/* Left: Grouped Tree */}
+        {/* Left: Dropzone + Grouped Tree */}
         <div className="xl:col-span-6 overflow-y-auto border-b xl:border-b-0 xl:border-r border-slate-800 p-3 space-y-3">
+          {/* Interactive Drag-and-Drop File Upload Zone */}
+          <div
+            role="button"
+            tabIndex={0}
+            data-testid="file-dropzone"
+            aria-label="Drag and drop local files or folders into active project workspace, or press Enter to browse files"
+            onClick={() => dropInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                dropInputRef.current?.click();
+              }
+            }}
+            className={`rounded-xl border border-dashed px-3.5 py-3 transition-colors cursor-pointer select-none ${
+              isDragActive
+                ? 'border-cyan-400 bg-cyan-950/35'
+                : 'border-white/15 bg-black/25 hover:border-cyan-400/50 hover:bg-slate-900/50'
+            }`}
+          >
+            <input
+              ref={dropInputRef}
+              type="file"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+              data-testid="file-dropzone-input"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-400/25 flex items-center justify-center shrink-0">
+                  <FileUp className="w-4 h-4 text-cyan-300" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-white truncate">
+                    {isProcessingDrop
+                      ? 'Importing local files into workspace...'
+                      : 'Drag & drop local files or folders here'}
+                  </div>
+                  <div className="text-[11px] font-mono text-slate-400 truncate">
+                    Click or press Enter to browse · Text &amp; source up to 1 MB
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="flex items-center gap-1.5 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">
+                  Target:
+                </span>
+                <select
+                  aria-label="Target workspace folder"
+                  value={dropTargetDir}
+                  onChange={(e) => setDropTargetDir(e.target.value)}
+                  className="bg-slate-950/90 border border-white/15 rounded-md px-2 py-1 text-[11px] font-mono text-cyan-200 focus:outline-none focus:border-cyan-400 cursor-pointer"
+                >
+                  {targetFolderOptions.map((dir) => (
+                    <option key={dir || '__root__'} value={dir}>
+                      {dir === '' ? '/ (Workspace Root)' : `${dir}/`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
           {treeGroups.length === 0 ? (
             <div className="text-center py-8 text-xs text-slate-500">
               No files match &ldquo;{filterQuery}&rdquo;
