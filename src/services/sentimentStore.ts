@@ -120,7 +120,14 @@ type TelemetryEnv = {
 };
 
 function readTelemetryEnv(): TelemetryEnv {
-  return (import.meta as unknown as { env?: TelemetryEnv }).env ?? {};
+  const processUrl =
+    typeof process !== 'undefined' && process.env
+      ? process.env.VITE_SENTIMENT_TELEMETRY_URL
+      : undefined;
+  const metaEnv = (import.meta as unknown as { env?: TelemetryEnv }).env;
+  return {
+    VITE_SENTIMENT_TELEMETRY_URL: processUrl ?? metaEnv?.VITE_SENTIMENT_TELEMETRY_URL,
+  };
 }
 
 export function resolveSentimentTelemetryUrl(
@@ -139,17 +146,22 @@ export function resolveSentimentTelemetryUrl(
   }
 }
 
+export type TelemetryTriggerReason = 'resolved' | 'session_close';
+
 export interface RemoteTelemetryPayload {
-  event: 'assistant_interaction';
+  event: 'assistant_interaction' | 'assistant_session_summary';
+  trigger: TelemetryTriggerReason;
   source: 'liquidos-one';
-  record: InteractionRecord;
-  summary?: SentimentMetricsSummary;
+  sentAt: number;
+  record?: InteractionRecord;
+  summary: SentimentMetricsSummary;
 }
 
 export async function pushTelemetryEvent(
-  record: InteractionRecord,
-  summary?: SentimentMetricsSummary,
-  endpointOverride?: string
+  record: InteractionRecord | undefined,
+  summary: SentimentMetricsSummary = computeSentimentMetrics(getStoredInteractions()),
+  endpointOverride?: string,
+  trigger: TelemetryTriggerReason = 'resolved'
 ): Promise<boolean> {
   const targetUrl = endpointOverride
     ? resolveSentimentTelemetryUrl({ VITE_SENTIMENT_TELEMETRY_URL: endpointOverride })
@@ -160,9 +172,11 @@ export async function pushTelemetryEvent(
   }
 
   const payload: RemoteTelemetryPayload = {
-    event: 'assistant_interaction',
+    event: trigger === 'session_close' ? 'assistant_session_summary' : 'assistant_interaction',
+    trigger,
     source: 'liquidos-one',
-    record,
+    sentAt: Date.now(),
+    ...(record ? { record } : {}),
     summary,
   };
 

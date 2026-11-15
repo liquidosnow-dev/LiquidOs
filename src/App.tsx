@@ -600,7 +600,18 @@ export default function App() {
     peakRamCeilingMb: 2800,
   });
 
-  const { startInteractionTimer, trackInteraction } = useAssistantSentiment();
+  const { startInteractionTimer, trackInteraction, flushSessionTelemetry } =
+    useAssistantSentiment();
+
+  useEffect(() => {
+    const handleWindowUnload = () => {
+      void flushSessionTelemetry();
+    };
+    window.addEventListener('unload', handleWindowUnload);
+    return () => {
+      window.removeEventListener('unload', handleWindowUnload);
+    };
+  }, [flushSessionTelemetry]);
 
   // 5. Chat Stream Messages
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -1121,10 +1132,14 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
           chatThreads={chatThreads}
           activeThreadId={activeThreadId}
           onSelectThread={(id) => {
+            if (id !== activeThreadId) {
+              void flushSessionTelemetry();
+            }
             setActiveThreadId(id);
             setIsMobileSidebarOpen(false);
           }}
           onNewThread={() => {
+            void flushSessionTelemetry();
             setMessages([]);
             handleSelectTemplate(TEMPLATES[0]);
             setIsMobileSidebarOpen(false);

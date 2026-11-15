@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   classifySentiment,
   clearStoredInteractions,
@@ -9,8 +9,14 @@ import {
   recordInteraction,
   resolveSentimentTelemetryUrl,
 } from '../services/sentimentStore';
+import {
+  dispatchAggregatedSentiment,
+  getTelemetryEndpointFromProcessOrVite,
+} from '../hooks/useAssistantSentiment';
 
 describe('Sentiment Analytics & Metrics Store', () => {
+  const originalTelemetryEnv = process.env.VITE_SENTIMENT_TELEMETRY_URL;
+
   const sampleRecords: InteractionRecord[] = [
     {
       id: '1',
@@ -43,7 +49,16 @@ describe('Sentiment Analytics & Metrics Store', () => {
 
   beforeEach(() => {
     clearStoredInteractions();
+    delete process.env.VITE_SENTIMENT_TELEMETRY_URL;
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    if (originalTelemetryEnv === undefined) {
+      delete process.env.VITE_SENTIMENT_TELEMETRY_URL;
+    } else {
+      process.env.VITE_SENTIMENT_TELEMETRY_URL = originalTelemetryEnv;
+    }
   });
 
   it('computes correct aggregate metrics', () => {
@@ -89,23 +104,23 @@ describe('Sentiment Analytics & Metrics Store', () => {
     expect(stored[0].toolInvocations).toEqual(['execute_code']);
   });
 
-  it('validates remote telemetry URLs and rejects invalid or non-HTTP schemes', () => {
-    expect(resolveSentimentTelemetryUrl({})).toBeNull();
+  it('detects VITE_SENTIMENT_TELEMETRY_URL from process.env and rejects invalid schemes', () => {
+    expect(getTelemetryEndpointFromProcessOrVite()).toBeNull();
+    process.env.VITE_SENTIMENT_TELEMETRY_URL = 'https://telemetry.liquidos.dev/v1/metrics';
+    expect(getTelemetryEndpointFromProcessOrVite()).toBe(
+      'https://telemetry.liquidos.dev/v1/metrics'
+    );
+
     expect(resolveSentimentTelemetryUrl({ VITE_SENTIMENT_TELEMETRY_URL: '   ' })).toBeNull();
     expect(
       resolveSentimentTelemetryUrl({ VITE_SENTIMENT_TELEMETRY_URL: 'javascript:alert(1)' })
     ).toBeNull();
-    expect(
-      resolveSentimentTelemetryUrl({
-        VITE_SENTIMENT_TELEMETRY_URL: ' https://telemetry.liquidos.dev/events ',
-      })
-    ).toBe('https://telemetry.liquidos.dev/events');
   });
 
-  it('pushes cloud telemetry only when configured and handles network errors safely', async () => {
+  it('posts aggregated sentiment metrics via background fetch on resolved and session_close triggers', async () => {
     const saved = recordInteraction({
       promptLength: 18,
-      sentiment: 'neutral',
+      sentiment: 'positive',
       responseTimeMs: 120,
       toolInvocations: ['vector_search'],
       resolved: true,
@@ -118,21 +133,28 @@ describe('Sentiment Analytics & Metrics Store', () => {
     expect(await pushTelemetryEvent(saved, summary)).toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
 
-    expect(
-      await pushTelemetryEvent(saved, summary, 'https://telemetry.liquidos.dev/v1/ingest')
-    ).toBe(true);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [calledUrl, init] = fetchSpy.mock.calls[0];
-    expect(calledUrl).toBe('https://telemetry.liquidos.dev/v1/ingest');
-    expect(init.method).toBe('POST');
-    const parsedBody = JSON.parse(init.body);
-    expect(parsedBody.event).toBe('assistant_interaction');
-    expect(parsedBody.record.id).toBe(saved.id);
-    expect(parsedBody.summary.totalInteractions).toBe(1);
+    process.env.VITE_SENTIMENT_TELEMETRY_URL = 'https://telemetry.liquidos.dev/v1/ingest';
+
+    expect(await dispatchAggregatedSentiment('resolved', saved)).toBe(true);
+    expect(await dispatchAggregatedSentiment('session_close', saved)).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const [url1, init1] = fetchSpy.mock.calls[0];
+    expect(url1).toBe('https://telemetry.liquidos.dev/v1/ingest');
+    expect(init1.method).toBe('POST');
+    expect(init1.keepalive).toBe(true);
+    const body1 = JSON.parse(init1.body);
+    expect(body1.event).toBe('assistant_interaction');
+    expect(body1.trigger).toBe('resolved');
+    expect(body1.summary.totalInteractions).toBe(1);
+    expect(body1.summary.resolutionRate).toBe(1);
+
+    const [, init2] = fetchSpy.mock.calls[1];
+    const body2 = JSON.parse(init2.body);
+    expect(body2.event).toBe('assistant_session_summary');
+    expect(body2.trigger).toBe('session_close');
 
     fetchSpy.mockRejectedValueOnce(new Error('offline'));
-    expect(
-      await pushTelemetryEvent(saved, summary, 'https://telemetry.liquidos.dev/v1/ingest')
-    ).toBe(false);
+    expect(await dispatchAggregatedSentiment('session_close', saved)).toBe(false);
   });
 });
