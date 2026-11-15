@@ -1,7 +1,7 @@
 export interface ProjectFile {
   name: string;
   path: string;
-  language: 'html' | 'javascript' | 'typescript' | 'css' | 'json' | 'markdown';
+  language: 'html' | 'javascript' | 'typescript' | 'python' | 'css' | 'json' | 'markdown';
   content: string;
   lastModified: number;
 }

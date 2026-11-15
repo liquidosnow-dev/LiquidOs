@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { sha256Hex, appendAuditLedger, verifyAuditLedgerIntegrity, simulateAesGcmEncrypt, verifyMfaCode } from './securityCrypto';
 
