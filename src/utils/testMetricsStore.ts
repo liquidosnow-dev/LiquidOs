@@ -29,6 +29,18 @@ export interface ModuleCoverageBreakdown {
   hotspotSeverity: HotspotSeverity;
 }
 
+export type ProgressiveDeltaStatus = 'improved' | 'regressed' | 'steady' | 'baseline';
+
+export interface ModuleProgressiveAnalysis {
+  file: string;
+  deltaLinesPct: number;
+  deltaBranchesPct: number;
+  deltaStatus: ProgressiveDeltaStatus;
+  branchGapToHealthy: number;
+  lineGapToHealthy: number;
+  recommendation: string;
+}
+
 export interface CoverageRadarPoint {
   module: string;
   file: string;
@@ -36,6 +48,8 @@ export interface CoverageRadarPoint {
   Branches: number;
   Functions: number;
   Statements: number;
+  PrevLines?: number;
+  PrevBranches?: number;
   fullMark: number;
   severity: HotspotSeverity;
 }
@@ -120,21 +134,75 @@ export function getSortedHotspotModules(
   });
 }
 
+export function analyzeModuleProgression(
+  current: ModuleCoverageBreakdown,
+  previous?: ModuleCoverageBreakdown
+): ModuleProgressiveAnalysis {
+  const branchGapToHealthy = clampPct(Math.max(0, 82 - current.branchesPct));
+  const lineGapToHealthy = clampPct(Math.max(0, 82 - current.linesPct));
+
+  let deltaLinesPct = 0;
+  let deltaBranchesPct = 0;
+  let deltaStatus: ProgressiveDeltaStatus = 'baseline';
+
+  if (previous) {
+    deltaLinesPct = Number((current.linesPct - previous.linesPct).toFixed(1));
+    deltaBranchesPct = Number((current.branchesPct - previous.branchesPct).toFixed(1));
+    const combinedDelta = deltaLinesPct + deltaBranchesPct;
+    if (combinedDelta > 0.1) deltaStatus = 'improved';
+    else if (combinedDelta < -0.1) deltaStatus = 'regressed';
+    else deltaStatus = 'steady';
+  }
+
+  let recommendation = 'Target satisfied: lines and branches meet the >=82% healthy threshold.';
+  if (current.hotspotSeverity !== 'HEALTHY') {
+    const linePreview = current.uncoveredLines.slice(0, 3).join(', ');
+    if (current.branchesPct <= current.linesPct && branchGapToHealthy > 0) {
+      recommendation = `Branch hotspot: cover conditional paths${
+        linePreview ? ` around lines ${linePreview}` : ''
+      } (+${branchGapToHealthy.toFixed(1)}% branches to HEALTHY).`;
+    } else {
+      recommendation = `Line execution gap: exercise uncovered statements${
+        linePreview ? ` at lines ${linePreview}` : ''
+      } (+${lineGapToHealthy.toFixed(1)}% lines to HEALTHY).`;
+    }
+  }
+
+  return {
+    file: current.file,
+    deltaLinesPct,
+    deltaBranchesPct,
+    deltaStatus,
+    branchGapToHealthy,
+    lineGapToHealthy,
+    recommendation,
+  };
+}
+
 export function buildCoverageRadarData(
   modules: ModuleCoverageBreakdown[],
-  maxModules = 8
+  maxModules = 8,
+  previousModules?: ModuleCoverageBreakdown[]
 ): CoverageRadarPoint[] {
+  const prevByFile = new Map(
+    (previousModules || []).map((m) => [m.file, m])
+  );
   const sorted = getSortedHotspotModules(modules).slice(0, Math.max(3, maxModules));
-  return sorted.map((mod) => ({
-    module: mod.moduleLabel,
-    file: mod.file,
-    Lines: mod.linesPct,
-    Branches: mod.branchesPct,
-    Functions: mod.functionsPct,
-    Statements: mod.statementsPct,
-    fullMark: 100,
-    severity: mod.hotspotSeverity,
-  }));
+  return sorted.map((mod) => {
+    const prev = prevByFile.get(mod.file);
+    return {
+      module: mod.moduleLabel,
+      file: mod.file,
+      Lines: mod.linesPct,
+      Branches: mod.branchesPct,
+      Functions: mod.functionsPct,
+      Statements: mod.statementsPct,
+      PrevLines: prev ? prev.linesPct : undefined,
+      PrevBranches: prev ? prev.branchesPct : undefined,
+      fullMark: 100,
+      severity: mod.hotspotSeverity,
+    };
+  });
 }
 
 function makeSeedModule(

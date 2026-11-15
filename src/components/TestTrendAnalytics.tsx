@@ -29,6 +29,10 @@ import {
   Radar as RadarIcon,
   Play,
   ArrowUpDown,
+  Sparkles,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
 } from 'lucide-react';
 import {
   getTestHistory,
@@ -37,6 +41,7 @@ import {
   HotspotSeverity,
   getSortedHotspotModules,
   buildCoverageRadarData,
+  analyzeModuleProgression,
 } from '../utils/testMetricsStore';
 
 interface TestTrendAnalyticsProps {
@@ -44,6 +49,11 @@ interface TestTrendAnalyticsProps {
   liveModuleBreakdown?: ModuleCoverageBreakdown[];
   availableSuitePaths?: string[];
   onRunSuite?: (suiteFile: string) => void;
+  onGenerateProgressiveGuard?: (
+    targetModulePath: string,
+    suiteFile: string,
+    uncoveredLines: number[]
+  ) => void;
 }
 
 type SortMode = 'hotspots' | 'alphabetical';
@@ -53,6 +63,7 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
   liveModuleBreakdown = [],
   availableSuitePaths = [],
   onRunSuite,
+  onGenerateProgressiveGuard,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hasViewportSize, setHasViewportSize] = useState(false);
@@ -62,6 +73,7 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
   const [sortMode, setSortMode] = useState<SortMode>('hotspots');
   const [showFunctionsOverlay, setShowFunctionsOverlay] = useState(true);
   const [showStatementsOverlay, setShowStatementsOverlay] = useState(false);
+  const [showPreviousBaselineOverlay, setShowPreviousBaselineOverlay] = useState(true);
   const [hasRadarSize, setHasRadarSize] = useState(false);
 
   const chartHostRef = useRef<HTMLDivElement | null>(null);
@@ -140,10 +152,15 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
     [runs]
   );
 
-  const selectedRun = useMemo(() => {
-    if (!selectedRunId) return runs[runs.length - 1] || null;
-    return runs.find((r) => r.runId === selectedRunId) || runs[runs.length - 1] || null;
+  const selectedRunIndex = useMemo(() => {
+    if (runs.length === 0) return -1;
+    if (!selectedRunId) return runs.length - 1;
+    const idx = runs.findIndex((r) => r.runId === selectedRunId);
+    return idx >= 0 ? idx : runs.length - 1;
   }, [runs, selectedRunId]);
+
+  const selectedRun = selectedRunIndex >= 0 ? runs[selectedRunIndex] : null;
+  const previousRun = selectedRunIndex > 0 ? runs[selectedRunIndex - 1] : null;
 
   const activeBreakdownSource: 'snapshot' | 'live' =
     selectedRun?.moduleBreakdown && selectedRun.moduleBreakdown.length > 0 ? 'snapshot' : 'live';
@@ -154,6 +171,37 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
     }
     return liveModuleBreakdown;
   }, [selectedRun, liveModuleBreakdown]);
+
+  const previousByFile = useMemo(
+    () => new Map((previousRun?.moduleBreakdown || []).map((m) => [m.file, m])),
+    [previousRun]
+  );
+
+  const progressionByFile = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof analyzeModuleProgression>>();
+    for (const mod of activeModules) {
+      map.set(mod.file, analyzeModuleProgression(mod, previousByFile.get(mod.file)));
+    }
+    return map;
+  }, [activeModules, previousByFile]);
+
+  const progressionSummary = useMemo(() => {
+    let improved = 0;
+    let regressed = 0;
+    let steady = 0;
+    for (const mod of activeModules) {
+      const p = progressionByFile.get(mod.file);
+      if (!p) continue;
+      if (p.deltaStatus === 'improved') improved += 1;
+      else if (p.deltaStatus === 'regressed') regressed += 1;
+      else if (p.deltaStatus === 'steady') steady += 1;
+    }
+    const overallLinesDelta =
+      selectedRun && previousRun
+        ? Number((selectedRun.coverageLines - previousRun.coverageLines).toFixed(1))
+        : null;
+    return { improved, regressed, steady, overallLinesDelta };
+  }, [activeModules, progressionByFile, selectedRun, previousRun]);
 
   const hotspotCounts = useMemo(() => {
     let critical = 0;
@@ -167,7 +215,10 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
     return { critical, watch, healthy };
   }, [activeModules]);
 
-  const radarData = useMemo(() => buildCoverageRadarData(activeModules, 8), [activeModules]);
+  const radarData = useMemo(
+    () => buildCoverageRadarData(activeModules, 8, previousRun?.moduleBreakdown),
+    [activeModules, previousRun]
+  );
 
   const displayedModules = useMemo(() => {
     const base =
@@ -351,6 +402,7 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                           radius={[4, 4, 0, 0]}
                           barSize={16}
                           cursor="pointer"
+                          isAnimationActive={false}
                           onClick={handleBarClick}
                         >
                           {data.map((entry) => {
@@ -371,6 +423,7 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                           radius={[4, 4, 0, 0]}
                           barSize={16}
                           cursor="pointer"
+                          isAnimationActive={false}
                           onClick={handleBarClick}
                         >
                           {data.map((entry) => {
@@ -392,6 +445,7 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                           strokeWidth={2}
                           dot={{ r: 3, fill: '#a78bfa', strokeWidth: 0 }}
                           activeDot={{ r: 5, fill: '#c4b5fd' }}
+                          isAnimationActive={false}
                         />
                       </ComposedChart>
                     </ResponsiveContainer>
@@ -471,6 +525,20 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                   <span className="text-slate-400">
                     {activeBreakdownSource === 'snapshot' ? 'Recorded snapshot' : 'Live suite coverage'}
                   </span>
+                  {progressionSummary.overallLinesDelta !== null && (
+                    <span
+                      className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold whitespace-nowrap ${
+                        progressionSummary.overallLinesDelta > 0
+                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                          : progressionSummary.overallLinesDelta < 0
+                            ? 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+                            : 'bg-slate-500/15 border-slate-500/30 text-slate-300'
+                      }`}
+                    >
+                      {progressionSummary.overallLinesDelta > 0 ? '+' : ''}
+                      {progressionSummary.overallLinesDelta.toFixed(1)}% vs prev run ({progressionSummary.improved} improved, {progressionSummary.regressed} regressed)
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -563,7 +631,21 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 text-[11px] font-mono">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono">
+                    {previousRun && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPreviousBaselineOverlay((v) => !v)}
+                        aria-pressed={showPreviousBaselineOverlay}
+                        className={`px-2 py-1 rounded-md border transition-colors cursor-pointer whitespace-nowrap ${
+                          showPreviousBaselineOverlay
+                            ? 'bg-slate-500/25 border-slate-400/50 text-slate-200'
+                            : 'glass-surface-1 border-white/10 text-slate-400'
+                        }`}
+                      >
+                        Prev Run Branches %
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setShowFunctionsOverlay((v) => !v)}
@@ -629,8 +711,9 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                             dataKey="Lines"
                             stroke="#22d3ee"
                             fill="#22d3ee"
-                            fillOpacity={0.22}
+                            fillOpacity={0.24}
                             strokeWidth={2}
+                            isAnimationActive={false}
                           />
                           <Radar
                             name="Branches %"
@@ -639,15 +722,29 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                             fill="#f59e0b"
                             fillOpacity={0.22}
                             strokeWidth={2}
+                            isAnimationActive={false}
                           />
+                          {showPreviousBaselineOverlay && previousRun && (
+                            <Radar
+                              name="Prev Branches %"
+                              dataKey="PrevBranches"
+                              stroke="#94a3b8"
+                              fill="#94a3b8"
+                              fillOpacity={0.1}
+                              strokeDasharray="4 4"
+                              strokeWidth={1.5}
+                              isAnimationActive={false}
+                            />
+                          )}
                           {showFunctionsOverlay && (
                             <Radar
                               name="Functions %"
                               dataKey="Functions"
                               stroke="#a78bfa"
                               fill="#a78bfa"
-                              fillOpacity={0.14}
+                              fillOpacity={0.16}
                               strokeWidth={1.5}
+                              isAnimationActive={false}
                             />
                           )}
                           {showStatementsOverlay && (
@@ -656,8 +753,9 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                               dataKey="Statements"
                               stroke="#34d399"
                               fill="#34d399"
-                              fillOpacity={0.14}
+                              fillOpacity={0.16}
                               strokeWidth={1.5}
+                              isAnimationActive={false}
                             />
                           )}
                         </RadarChart>
@@ -708,9 +806,14 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                     {displayedModules.map((mod) => {
                       const pres = getSeverityPresentation(mod.hotspotSeverity);
                       const SeverityIcon = pres.Icon;
+                      const progression = progressionByFile.get(mod.file);
                       const candidateSuitePath = mod.file.replace(/\.ts$/, '.test.ts');
-                      const canRunSuite =
-                        Boolean(onRunSuite) && availableSuitePaths.includes(candidateSuitePath);
+                      const suiteExists = availableSuitePaths.includes(candidateSuitePath);
+                      const canRunSuite = Boolean(onRunSuite) && suiteExists;
+                      const canGenerateGuard =
+                        Boolean(onGenerateProgressiveGuard) &&
+                        suiteExists &&
+                        mod.hotspotSeverity !== 'HEALTHY';
 
                       return (
                         <div
@@ -726,6 +829,30 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0">
+                              {progression && progression.deltaStatus !== 'baseline' && (
+                                <span
+                                  className={`flex items-center gap-0.5 text-[10px] font-mono tabular-nums whitespace-nowrap ${
+                                    progression.deltaStatus === 'improved'
+                                      ? 'text-emerald-300'
+                                      : progression.deltaStatus === 'regressed'
+                                        ? 'text-rose-300'
+                                        : 'text-slate-400'
+                                  }`}
+                                >
+                                  {progression.deltaStatus === 'improved' ? (
+                                    <ArrowUpRight className="w-3 h-3" />
+                                  ) : progression.deltaStatus === 'regressed' ? (
+                                    <ArrowDownRight className="w-3 h-3" />
+                                  ) : (
+                                    <Minus className="w-3 h-3" />
+                                  )}
+                                  {progression.deltaLinesPct > 0 ? '+' : ''}
+                                  {progression.deltaLinesPct.toFixed(1)}% L ·{' '}
+                                  {progression.deltaBranchesPct > 0 ? '+' : ''}
+                                  {progression.deltaBranchesPct.toFixed(1)}% B
+                                </span>
+                              )}
+
                               <span
                                 className={`px-2 py-0.5 rounded-md border text-[10px] font-mono font-semibold ${pres.badgeClass}`}
                               >
@@ -797,6 +924,35 @@ export const TestTrendAnalytics: React.FC<TestTrendAnalyticsProps> = ({
                                   Uncovered lines: {mod.uncoveredLines.slice(0, 8).join(', ')}
                                   {mod.uncoveredLines.length > 8 ? '…' : ''}
                                 </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Embedded Progressive Analysis Row */}
+                          {progression && (
+                            <div
+                              className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px]"
+                              data-testid={`progressive-analysis-${mod.moduleLabel}`}
+                            >
+                              <span className="text-slate-300 font-mono leading-snug">
+                                {progression.recommendation}
+                              </span>
+                              {canGenerateGuard && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onGenerateProgressiveGuard?.(
+                                      mod.file,
+                                      candidateSuitePath,
+                                      mod.uncoveredLines
+                                    );
+                                    setIsDrawerOpen(false);
+                                  }}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  <span>+ Progressive Guard</span>
+                                </button>
                               )}
                             </div>
                           )}

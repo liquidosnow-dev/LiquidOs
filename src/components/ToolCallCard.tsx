@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ToolCall } from '../types';
-import { ChevronDown, ChevronRight, Play, CheckCircle2, AlertCircle, Loader2, Terminal, Globe, Calculator, FileCode, Search, Image as ImageIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, Play, CheckCircle2, AlertCircle, Loader2, Terminal, Globe, Calculator, FileCode, Search, Image as ImageIcon, Database } from 'lucide-react';
 
 interface ToolCallCardProps {
   toolCall: ToolCall;
@@ -25,6 +25,8 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, onRunInCan
         return <Search className="w-4 h-4 text-blue-400" />;
       case 'generate_image':
         return <ImageIcon className="w-4 h-4 text-pink-400" />;
+      case 'vector_search':
+        return <Database className="w-4 h-4 text-cyan-300" />;
       default:
         return <Terminal className="w-4 h-4 text-cyan-400" />;
     }

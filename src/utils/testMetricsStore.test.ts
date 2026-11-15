@@ -9,6 +9,7 @@ import {
   buildModuleBreakdownFromCoverage,
   getSortedHotspotModules,
   buildCoverageRadarData,
+  analyzeModuleProgression,
 } from './testMetricsStore';
 
 test('testMetricsStore records runs with moduleBreakdown and caps ring buffer at 10 snapshots', () => {
@@ -76,7 +77,19 @@ test('formatModuleLabel strips directory prefixes and TypeScript suffixes cleanl
   assert.equal(formatModuleLabel('components/TestingTab.tsx'), 'TestingTab');
 });
 
-test('getSortedHotspotModules and buildCoverageRadarData prioritize lowest-coverage hotspots', () => {
+test('getSortedHotspotModules and buildCoverageRadarData prioritize lowest-coverage hotspots and map baseline', () => {
+  const previous = buildModuleBreakdownFromCoverage([
+    {
+      file: 'src/utils/criticalMod.ts',
+      lines: { pct: 55.0 },
+      statements: { pct: 54.0 },
+      functions: { pct: 60.0 },
+      branches: { pct: 32.0 },
+      uncoveredLines: [10, 14, 18],
+      uncoveredBranches: [],
+    },
+  ]);
+
   const modules = buildModuleBreakdownFromCoverage([
     {
       file: 'src/utils/healthyMod.ts',
@@ -117,10 +130,70 @@ test('getSortedHotspotModules and buildCoverageRadarData prioritize lowest-cover
   assert.equal(sorted[1].hotspotSeverity, 'WATCH');
   assert.equal(sorted[2].hotspotSeverity, 'HEALTHY');
 
-  const radar = buildCoverageRadarData(modules, 8);
+  const radar = buildCoverageRadarData(modules, 8, previous);
   assert.equal(radar.length, 3);
   assert.equal(radar[0].module, 'criticalMod');
   assert.equal(radar[0].Branches, 40.0);
+  assert.equal(radar[0].PrevBranches, 32.0);
   assert.equal(radar[0].Lines, 62.0);
   assert.equal(radar[0].fullMark, 100);
+});
+
+test('analyzeModuleProgression computes coverage deltas, healthy threshold gaps, and progressive recommendations', () => {
+  const [prevMod] = buildModuleBreakdownFromCoverage([
+    {
+      file: 'src/utils/piPipeline.ts',
+      lines: { pct: 60.0 },
+      statements: { pct: 59.0 },
+      functions: { pct: 70.0 },
+      branches: { pct: 45.0 },
+      uncoveredLines: [40, 52],
+      uncoveredBranches: [],
+    },
+  ]);
+  const [improvedMod, regressedMod, healthyMod] = buildModuleBreakdownFromCoverage([
+    {
+      file: 'src/utils/piPipeline.ts',
+      lines: { pct: 68.5 },
+      statements: { pct: 67.0 },
+      functions: { pct: 75.0 },
+      branches: { pct: 53.0 },
+      uncoveredLines: [52],
+      uncoveredBranches: [{ line: 52, type: 'if', pathsMissed: 1 }],
+    },
+    {
+      file: 'src/utils/piPipeline.ts',
+      lines: { pct: 56.0 },
+      statements: { pct: 55.0 },
+      functions: { pct: 65.0 },
+      branches: { pct: 40.0 },
+      uncoveredLines: [40, 52],
+      uncoveredBranches: [],
+    },
+    {
+      file: 'src/utils/contractRegistry.ts',
+      lines: { pct: 90.0 },
+      statements: { pct: 89.0 },
+      functions: { pct: 95.0 },
+      branches: { pct: 86.0 },
+      uncoveredLines: [],
+      uncoveredBranches: [],
+    },
+  ]);
+
+  const imp = analyzeModuleProgression(improvedMod, prevMod);
+  assert.equal(imp.deltaStatus, 'improved');
+  assert.equal(imp.deltaLinesPct, 8.5);
+  assert.equal(imp.deltaBranchesPct, 8.0);
+  assert.equal(imp.branchGapToHealthy, 29.0);
+  assert.ok(imp.recommendation.includes('Branch hotspot'));
+
+  const reg = analyzeModuleProgression(regressedMod, prevMod);
+  assert.equal(reg.deltaStatus, 'regressed');
+  assert.equal(reg.deltaLinesPct, -4.0);
+
+  const base = analyzeModuleProgression(healthyMod);
+  assert.equal(base.deltaStatus, 'baseline');
+  assert.equal(base.branchGapToHealthy, 0);
+  assert.ok(base.recommendation.includes('Target satisfied'));
 });

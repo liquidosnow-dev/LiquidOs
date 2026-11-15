@@ -194,10 +194,21 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
     systemInstruction,
     persona,
     toolsEnabled = true,
+    vectorContext = [],
   } = req.body;
 
   const ai = getAiClient();
   const lastUserMsg = messages[messages.length - 1]?.content || '';
+  const groundedBlock =
+    Array.isArray(vectorContext) && vectorContext.length > 0
+      ? `\nLive Captured Preview Snapshot Context (Sovereign Vector Vault):\n${vectorContext
+          .slice(0, 4)
+          .map(
+            (ctx: { url?: string; content?: string; similarity?: number }, idx: number) =>
+              `[${idx + 1}] (${ctx.url || 'preview'}, sim=${ctx.similarity ?? 'n/a'}): ${ctx.content || ''}`
+          )
+          .join('\n')}`
+      : '';
 
   if (ai) {
     try {
@@ -214,6 +225,7 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
         persona ? `Active Persona: ${persona}.` : '',
         'When the user asks to build or update an application, provide complete, working, production-grade code.',
         'Wrap code blocks in ```html or ```jsx or ```json with file path annotations like <!-- filepath: src/App.tsx --> or // filepath: index.html.',
+        groundedBlock,
       ].filter(Boolean).join('\n');
 
       const config: any = {
@@ -250,10 +262,16 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
   }
 
   // Graceful fallback synthesis (produces full app structures & tool simulations)
+  const fallbackReply = generateSynthesizedResponse(lastUserMsg, persona);
+  const groundedPrefix =
+    Array.isArray(vectorContext) && vectorContext.length > 0
+      ? `> **Sovereign Vector Grounding (${vectorContext.length} live snapshot chunk${vectorContext.length === 1 ? '' : 's'} retrieved from \`${vectorContext[0]?.url || 'https://app.preview/'}\`)**\n\n`
+      : '';
+
   return res.json({
     success: true,
     model,
-    text: generateSynthesizedResponse(lastUserMsg, persona),
+    text: `${groundedPrefix}${fallbackReply}`,
     isFallback: !ai,
   });
 });

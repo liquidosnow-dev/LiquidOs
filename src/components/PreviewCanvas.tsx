@@ -25,7 +25,10 @@ import {
   ShieldCheck,
   BookOpen,
   FlaskConical,
+  Database,
 } from 'lucide-react';
+import { runCapturePipeline } from '../workers/captureWorker';
+import { hydrateVectorVault, getVectorVaultStats } from '../services/vectorStore';
 
 export type WorkspaceTabType =
   | 'preview'
@@ -75,6 +78,7 @@ interface PreviewCanvasProps {
     failed: number;
     total: number;
   } | null;
+  onDeviceMode?: 'disconnected' | 'native' | 'opfs' | 'imported';
 }
 
 export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
@@ -97,6 +101,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   onSendInspectToChat,
   watchMode = false,
   watchTestStatus = null,
+  onDeviceMode = 'disconnected',
 }) => {
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [currentRoute, setCurrentRoute] = useState('/');
@@ -120,6 +125,39 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   const [copiedInspect, setCopiedInspect] = useState(false);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [vectorChunkCount, setVectorChunkCount] = useState<number>(0);
+  const [isVectorizing, setIsVectorizing] = useState<boolean>(false);
+
+  const bundledHtml = bundlePreviewHtml(files);
+
+  const captureCurrentPreviewSnapshot = async () => {
+    setIsVectorizing(true);
+    try {
+      await hydrateVectorVault();
+      const targetUrl = `https://app.preview${currentRoute || '/'}`;
+      await runCapturePipeline(targetUrl, bundledHtml);
+      setVectorChunkCount(getVectorVaultStats().totalChunks);
+    } finally {
+      setIsVectorizing(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      await hydrateVectorVault();
+      const targetUrl = `https://app.preview${currentRoute || '/'}`;
+      await runCapturePipeline(targetUrl, bundledHtml);
+      if (active) {
+        setVectorChunkCount(getVectorVaultStats().totalChunks);
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [bundledHtml, currentRoute, reloadKey]);
 
   // Listen for console logs sent from the isolated iframe
   useEffect(() => {
@@ -150,8 +188,6 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
   };
-
-  const bundledHtml = bundlePreviewHtml(files);
 
   const getViewportWidthClass = () => {
     switch (viewport) {
@@ -200,10 +236,19 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 ? 'bg-gradient-to-r from-cyan-500/80 to-blue-600/80 text-white shadow-sm font-semibold border border-white/15'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
-            title="Master File Tree Showcase (/home/user/webapp)"
+            title="Master File Tree Showcase (/home/user/webapp) & On-Device FS"
           >
             <HardDrive className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">File Explorer</span>
+            {(onDeviceMode === 'native' || onDeviceMode === 'opfs') && (
+              <span
+                className={`text-[10px] font-mono ${
+                  activeTab === 'files' ? 'text-emerald-100' : 'text-emerald-400'
+                }`}
+              >
+                · {onDeviceMode === 'native' ? 'Host' : 'OPFS'}
+              </span>
+            )}
           </button>
 
           <button
@@ -464,6 +509,20 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                 </button>
               </div>
             </>
+          )}
+
+          {activeTab === 'preview' && (
+            <button
+              type="button"
+              data-testid="vectorize-snapshot-btn"
+              onClick={captureCurrentPreviewSnapshot}
+              disabled={isVectorizing}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/30 hover:bg-white/10 text-cyan-300 border border-white/10 text-xs font-mono tabular-nums transition-colors cursor-pointer whitespace-nowrap"
+              title="Capture & index live preview snapshot into local Vector Vault"
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span>{isVectorizing ? 'Indexing...' : `Vec · ${vectorChunkCount}`}</span>
+            </button>
           )}
 
           <button
