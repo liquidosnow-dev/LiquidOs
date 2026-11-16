@@ -5,28 +5,36 @@
     "contract": "GLOBAL-MODE-001",
     "mode": "ACTIVE",
     "epoch": 1,
-    "minFencingVersion": 2,
+    "minFencingVersion": 9,
     "activePermit": {
-      "permitId": "perm_2b285969cc8000e0",
-      "subject": "human:mercy",
-      "issuer": "server:key_5170815980fe",
+      "permitId": "perm_f44fa98248e08f2c",
+      "subject": "verifier",
+      "issuer": "server:key_6d18b20aed15",
       "epoch": 1,
-      "fencingVersion": 2,
-      "issuedAt": 1794779870713,
-      "expiresAt": 1794780770713,
+      "fencingVersion": 9,
+      "issuedAt": 1794824356192,
+      "expiresAt": 1794824476192,
       "scopes": [
         "workspace_ingest",
         "workspace_commit",
         "device_sync"
       ],
       "revoked": false,
-      "digest": "919ae1eb3c479097c95847244e5250b7a7dd2a28563d7982400d915eb445416b",
-      "serverSignature": "01hkytGtq6VEhrz5xA3bvmfSgBKeRFT2FzI1h+QROK5O+OxJgc/hm/JojnTnXsliJ177uEIDR6ImRPrR+JHVCw=="
+      "digest": "d38255ee262e9ff4c91d84ecdf4612e73f9b06aa352cec5b50b29f570b3fc208",
+      "serverSignature": "m5z0KNG2F8qc9t7pougms+aVr47dk61Bqx9Q9wo2lw1tVedllqvRSb8F1m4OkPROogk7XtBYjsofxJ5Whso6Ag=="
     },
-    "revokedPermitIds": [],
+    "revokedPermitIds": [
+      "perm_2b285969cc8000e0",
+      "perm_f26a2cfb1459a26d",
+      "perm_6e05beb13d1c427b",
+      "perm_7e81a53aa3a4dd66",
+      "perm_edc3e639f8f991ce",
+      "perm_caf6069e05f4bc2f",
+      "perm_1bc69eb05a6eba0b"
+    ],
     "lastTransitionAt": 1794779870713,
     "lastTransitionReason": "Server control-plane initialized ACTIVE session",
-    "linearizationSeq": 2,
+    "linearizationSeq": 9,
     "activeKeyId": "key_6d18b20aed15",
     "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
     "publicKeysById": {
@@ -207,6 +215,537 @@
       },
       "previousHash": "d34f99ff8b894b000d14874c93c144dc906c7252a5d3e28a60ec4574877942a2",
       "hash": "b363f371e4da3fb0e65902a45e455f21b96e65855cf8818afa4b112fcee327a8"
+    },
+    {
+      "index": 10,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794822954485,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 10,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "b363f371e4da3fb0e65902a45e455f21b96e65855cf8818afa4b112fcee327a8",
+      "hash": "e5f9550970dcf5e0afc4356e403c3b49566f1edd8e6da64508e75f36970be58b"
+    },
+    {
+      "index": 11,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794823230973,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 11,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "e5f9550970dcf5e0afc4356e403c3b49566f1edd8e6da64508e75f36970be58b",
+      "hash": "51b622437c5983fd6ae9989388c38a73198b280a35725a1f2dac641616166f2e"
+    },
+    {
+      "index": 12,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794823232018,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 12,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "51b622437c5983fd6ae9989388c38a73198b280a35725a1f2dac641616166f2e",
+      "hash": "4e82792afaade041045e5a2ca29de49702ac17904d18da65e7947347bb7a7557"
+    },
+    {
+      "index": 13,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794823252916,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 13,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "4e82792afaade041045e5a2ca29de49702ac17904d18da65e7947347bb7a7557",
+      "hash": "e3917e1a23418e046ed7f4ffcbfe68eafa315a2c103f9e2ab60720ecac6bd457"
+    },
+    {
+      "index": 14,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794823271022,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 14,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "e3917e1a23418e046ed7f4ffcbfe68eafa315a2c103f9e2ab60720ecac6bd457",
+      "hash": "0c2a3515bdbd954b7e00b9c1c68841d9a41c3ee4aa11b6661e11da7fade8a6f8"
+    },
+    {
+      "index": 15,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794823353638,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 15,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "0c2a3515bdbd954b7e00b9c1c68841d9a41c3ee4aa11b6661e11da7fade8a6f8",
+      "hash": "8682cc83397d011741bf85bb9c9a0e5604e6a3a2a1fc5524fd969ef8911ba512"
+    },
+    {
+      "index": 16,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794823594610,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 16,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "8682cc83397d011741bf85bb9c9a0e5604e6a3a2a1fc5524fd969ef8911ba512",
+      "hash": "8cfb4d01906bf0206c74636e1658148c1b6ffaf087b984f73199af02971a4a4f"
+    },
+    {
+      "index": 17,
+      "action": "iam_permit_issued",
+      "entityId": "perm_f26a2cfb1459a26d",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794823621005,
+      "data": {
+        "epoch": 1,
+        "fencingVersion": 3,
+        "scopes": [
+          "workspace_ingest",
+          "workspace_commit",
+          "device_sync"
+        ],
+        "expiresAt": 1794823741005,
+        "linearizationSeq": 3
+      },
+      "previousHash": "8cfb4d01906bf0206c74636e1658148c1b6ffaf087b984f73199af02971a4a4f",
+      "hash": "8773aae0da7f5222215bba104cbfd78970177de9c7520c48d88f811430c29f70"
+    },
+    {
+      "index": 18,
+      "action": "iam_permit_issued",
+      "entityId": "perm_6e05beb13d1c427b",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794823651244,
+      "data": {
+        "epoch": 1,
+        "fencingVersion": 4,
+        "scopes": [
+          "workspace_ingest",
+          "workspace_commit",
+          "device_sync"
+        ],
+        "expiresAt": 1794823771244,
+        "linearizationSeq": 4
+      },
+      "previousHash": "8773aae0da7f5222215bba104cbfd78970177de9c7520c48d88f811430c29f70",
+      "hash": "82797b3de7a9431f3bc887e46092bf6e00334a00d9fe111b2beaeae887c73482"
+    },
+    {
+      "index": 19,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_fc8ad809c0261e44",
+      "author": "verifier",
+      "timestamp": 1794823651279,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 4
+      },
+      "previousHash": "82797b3de7a9431f3bc887e46092bf6e00334a00d9fe111b2beaeae887c73482",
+      "hash": "a274e08b2c34fa294183d1178c3c14233a0f43d4f8a8516c8cb947cb0a985308"
+    },
+    {
+      "index": 20,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_fc8ad809c0261e44",
+      "author": "verifier",
+      "timestamp": 1794823651291,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 4
+      },
+      "previousHash": "a274e08b2c34fa294183d1178c3c14233a0f43d4f8a8516c8cb947cb0a985308",
+      "hash": "bba84bc28827ddf86722c80b20c2b63db274cf7edc795b94f090bafca2d8d83d"
+    },
+    {
+      "index": 21,
+      "action": "iam_permit_issued",
+      "entityId": "perm_7e81a53aa3a4dd66",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794823664300,
+      "data": {
+        "epoch": 1,
+        "fencingVersion": 5,
+        "scopes": [
+          "workspace_ingest",
+          "workspace_commit",
+          "device_sync"
+        ],
+        "expiresAt": 1794823784300,
+        "linearizationSeq": 5
+      },
+      "previousHash": "bba84bc28827ddf86722c80b20c2b63db274cf7edc795b94f090bafca2d8d83d",
+      "hash": "42e9be34bd6beccedb4545323bdb5d878657825f17e053a3b236ed56968e6177"
+    },
+    {
+      "index": 22,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_1042832d51a210bd",
+      "author": "verifier",
+      "timestamp": 1794823664325,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 5
+      },
+      "previousHash": "42e9be34bd6beccedb4545323bdb5d878657825f17e053a3b236ed56968e6177",
+      "hash": "c18005aaccf886f3b65026d043337d676b6ee33e7483a9bb14cd156e6b477271"
+    },
+    {
+      "index": 23,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_1042832d51a210bd",
+      "author": "verifier",
+      "timestamp": 1794823664336,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 5
+      },
+      "previousHash": "c18005aaccf886f3b65026d043337d676b6ee33e7483a9bb14cd156e6b477271",
+      "hash": "058cdd29661cd1268f7e0acb9115de275121760351aa9e113794f9d6884aeb27"
+    },
+    {
+      "index": 24,
+      "action": "iam_permit_issued",
+      "entityId": "perm_edc3e639f8f991ce",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794823677364,
+      "data": {
+        "epoch": 1,
+        "fencingVersion": 6,
+        "scopes": [
+          "workspace_ingest",
+          "workspace_commit",
+          "device_sync"
+        ],
+        "expiresAt": 1794823797364,
+        "linearizationSeq": 6
+      },
+      "previousHash": "058cdd29661cd1268f7e0acb9115de275121760351aa9e113794f9d6884aeb27",
+      "hash": "60aa3a5bb74ce1c5de70975c6c1e9dca7bf427be67f73bd30d2322e87407d2e3"
+    },
+    {
+      "index": 25,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_ceb16fca9661f0dc",
+      "author": "verifier",
+      "timestamp": 1794823677386,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 6
+      },
+      "previousHash": "60aa3a5bb74ce1c5de70975c6c1e9dca7bf427be67f73bd30d2322e87407d2e3",
+      "hash": "013ef5f8bc2be92ecd12b6d1440fbca631f399088fe9dd4aff386650300602b0"
+    },
+    {
+      "index": 26,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_ceb16fca9661f0dc",
+      "author": "verifier",
+      "timestamp": 1794823677396,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 6
+      },
+      "previousHash": "013ef5f8bc2be92ecd12b6d1440fbca631f399088fe9dd4aff386650300602b0",
+      "hash": "a4ed8e560215088956e76529f162e1a5e8ec8314398976fbb5ad586f3a82f1c1"
+    },
+    {
+      "index": 27,
+      "action": "iam_permit_issued",
+      "entityId": "perm_caf6069e05f4bc2f",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794823693878,
+      "data": {
+        "epoch": 1,
+        "fencingVersion": 7,
+        "scopes": [
+          "workspace_ingest",
+          "workspace_commit",
+          "device_sync"
+        ],
+        "expiresAt": 1794823813878,
+        "linearizationSeq": 7
+      },
+      "previousHash": "a4ed8e560215088956e76529f162e1a5e8ec8314398976fbb5ad586f3a82f1c1",
+      "hash": "beb054f2ea2f2132ee56fd1549392f621056268948142580d0353e774f55e8d1"
+    },
+    {
+      "index": 28,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_53be12d0658b147d",
+      "author": "verifier",
+      "timestamp": 1794823693902,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 7
+      },
+      "previousHash": "beb054f2ea2f2132ee56fd1549392f621056268948142580d0353e774f55e8d1",
+      "hash": "0191d50be67f9f07d650fc263aff15f38607895f665ab8b5eae86ec185d1e0da"
+    },
+    {
+      "index": 29,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_53be12d0658b147d",
+      "author": "verifier",
+      "timestamp": 1794823693913,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 7
+      },
+      "previousHash": "0191d50be67f9f07d650fc263aff15f38607895f665ab8b5eae86ec185d1e0da",
+      "hash": "59a3fdeed24efaac0024a84e1ea296177962ddd4b52c36987c941046e168679e"
+    },
+    {
+      "index": 30,
+      "action": "iam_permit_issued",
+      "entityId": "perm_1bc69eb05a6eba0b",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794823735743,
+      "data": {
+        "epoch": 1,
+        "fencingVersion": 8,
+        "scopes": [
+          "workspace_ingest",
+          "workspace_commit",
+          "device_sync"
+        ],
+        "expiresAt": 1794823855743,
+        "linearizationSeq": 8
+      },
+      "previousHash": "59a3fdeed24efaac0024a84e1ea296177962ddd4b52c36987c941046e168679e",
+      "hash": "422437dbc38f90e93c152011b5c54919524f4e8de6e71f5e1c8fd785047341a8"
+    },
+    {
+      "index": 31,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_1f5f33004ff3f30c",
+      "author": "verifier",
+      "timestamp": 1794823735769,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 8
+      },
+      "previousHash": "422437dbc38f90e93c152011b5c54919524f4e8de6e71f5e1c8fd785047341a8",
+      "hash": "d0429c44b8a7a5e157b79c28aedfcb6737d193e12185bf15185703b6f2cec153"
+    },
+    {
+      "index": 32,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_1f5f33004ff3f30c",
+      "author": "verifier",
+      "timestamp": 1794823735778,
+      "data": {
+        "projectName": "liquidos-hono-app",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 8
+      },
+      "previousHash": "d0429c44b8a7a5e157b79c28aedfcb6737d193e12185bf15185703b6f2cec153",
+      "hash": "090833faf00ad71c2f79ff975d060c50de7b2d3e1033fb8f39de6831edbee7fb"
+    },
+    {
+      "index": 33,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794823736382,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 33,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "090833faf00ad71c2f79ff975d060c50de7b2d3e1033fb8f39de6831edbee7fb",
+      "hash": "051bb704d4a472f50f983e6ec33db8dbb87aef3b603cdf1fa2bb2d843981096a"
+    },
+    {
+      "index": 34,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794824233928,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 34,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "051bb704d4a472f50f983e6ec33db8dbb87aef3b603cdf1fa2bb2d843981096a",
+      "hash": "8a83e4c7020a8f7cc2ba1e946a041905ab9f64f442a83c90aa30d26cd98f9871"
+    },
+    {
+      "index": 35,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794824335483,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 35,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "8a83e4c7020a8f7cc2ba1e946a041905ab9f64f442a83c90aa30d26cd98f9871",
+      "hash": "8482b15adcd196091cba5e2831a4da3de4d8c8e63c53d65e54a0e1a5666424d8"
+    },
+    {
+      "index": 36,
+      "action": "server_auth_denied",
+      "entityId": "perm_1bc69eb05a6eba0b",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794824346069,
+      "data": {
+        "scope": "workspace_commit",
+        "code": "ERR_IAM_EXPIRED",
+        "reason": "Capability permit \"perm_1bc69eb05a6eba0b\" expired at 2026-11-16T10:10:55.743Z.",
+        "linearizationSeq": 8
+      },
+      "previousHash": "8482b15adcd196091cba5e2831a4da3de4d8c8e63c53d65e54a0e1a5666424d8",
+      "hash": "79661aab78fb83c5b19a117826a92625bf43856358542e89c25290da2d0d5fef"
+    },
+    {
+      "index": 37,
+      "action": "iam_permit_issued",
+      "entityId": "perm_f44fa98248e08f2c",
+      "author": "server:key_6d18b20aed15",
+      "timestamp": 1794824356192,
+      "data": {
+        "epoch": 1,
+        "fencingVersion": 9,
+        "scopes": [
+          "workspace_ingest",
+          "workspace_commit",
+          "device_sync"
+        ],
+        "expiresAt": 1794824476192,
+        "linearizationSeq": 9
+      },
+      "previousHash": "79661aab78fb83c5b19a117826a92625bf43856358542e89c25290da2d0d5fef",
+      "hash": "242600ca3b7a74a0810c83b59c1645571aa235869423268871ec27f4ddd752ef"
+    },
+    {
+      "index": 38,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_143442d1ea654c2e",
+      "author": "verifier",
+      "timestamp": 1794824356205,
+      "data": {
+        "projectName": "LiquidOS Hono",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 9
+      },
+      "previousHash": "242600ca3b7a74a0810c83b59c1645571aa235869423268871ec27f4ddd752ef",
+      "hash": "5730e02481338e715e3c1018b34cb74428e029b320bd1c0f730994d29103dedb"
+    },
+    {
+      "index": 39,
+      "action": "deployment_ed25519_verified",
+      "entityId": "rcpt_143442d1ea654c2e",
+      "author": "verifier",
+      "timestamp": 1794824356259,
+      "data": {
+        "projectName": "LiquidOS Hono",
+        "channel": "cloudflare",
+        "keyId": "key_6d18b20aed15",
+        "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+        "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+        "fileCount": 5,
+        "linearizationSeq": 9
+      },
+      "previousHash": "5730e02481338e715e3c1018b34cb74428e029b320bd1c0f730994d29103dedb",
+      "hash": "b6cb9ecd6abd93daa09e66f7ffad8e620ff97bc86d9eb81a29bf87772d271fee"
     }
   ],
   "checkpoints": [
@@ -309,6 +848,306 @@
       "keyId": "key_6d18b20aed15",
       "canonicalPayload": "{\"checkpointSeq\":10,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":10,\"timestamp\":1794821907538,\"tipHash\":\"b363f371e4da3fb0e65902a45e455f21b96e65855cf8818afa4b112fcee327a8\",\"tipIndex\":9}",
       "signature": "IwxMkibYPiF6WNOv4h4XzdaP9P4Tp7ZlYIs5Lg09vj0npokxI6cxUPNV47L7hfy1DgTQVyyBuvrDuEb6CU4yAQ=="
+    },
+    {
+      "checkpointSeq": 11,
+      "ledgerLength": 11,
+      "tipIndex": 10,
+      "tipHash": "e5f9550970dcf5e0afc4356e403c3b49566f1edd8e6da64508e75f36970be58b",
+      "timestamp": 1794822954486,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":11,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":11,\"timestamp\":1794822954486,\"tipHash\":\"e5f9550970dcf5e0afc4356e403c3b49566f1edd8e6da64508e75f36970be58b\",\"tipIndex\":10}",
+      "signature": "lHvcO4VkdWibjt8QFFsTgviadTMJRoTUO6EHmYnQ58g9wmDuV+f1g0l7ORRyIGR9m0jnBat6LExhvOBIolhMCA=="
+    },
+    {
+      "checkpointSeq": 12,
+      "ledgerLength": 12,
+      "tipIndex": 11,
+      "tipHash": "51b622437c5983fd6ae9989388c38a73198b280a35725a1f2dac641616166f2e",
+      "timestamp": 1794823230974,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":12,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":12,\"timestamp\":1794823230974,\"tipHash\":\"51b622437c5983fd6ae9989388c38a73198b280a35725a1f2dac641616166f2e\",\"tipIndex\":11}",
+      "signature": "0IwFwSLJKEaW+LiG0zjr5MLQsqaXpkOlCWDrl57yfEgoyfitQ0l4sYUl2MAbCHKBYPkNXcAwNeOwfPq2GHtUDA=="
+    },
+    {
+      "checkpointSeq": 13,
+      "ledgerLength": 13,
+      "tipIndex": 12,
+      "tipHash": "4e82792afaade041045e5a2ca29de49702ac17904d18da65e7947347bb7a7557",
+      "timestamp": 1794823232018,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":13,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":13,\"timestamp\":1794823232018,\"tipHash\":\"4e82792afaade041045e5a2ca29de49702ac17904d18da65e7947347bb7a7557\",\"tipIndex\":12}",
+      "signature": "eAwc8EMhFHizHQlD8LCZS6sOYC+DIWcCVhploicemTHTS4SN+3OR0nTHDtY91IcgcS9CZtCqMhRU+tva3xv7DA=="
+    },
+    {
+      "checkpointSeq": 14,
+      "ledgerLength": 14,
+      "tipIndex": 13,
+      "tipHash": "e3917e1a23418e046ed7f4ffcbfe68eafa315a2c103f9e2ab60720ecac6bd457",
+      "timestamp": 1794823252916,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":14,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":14,\"timestamp\":1794823252916,\"tipHash\":\"e3917e1a23418e046ed7f4ffcbfe68eafa315a2c103f9e2ab60720ecac6bd457\",\"tipIndex\":13}",
+      "signature": "GRPpCND4l3Wb9b+kjQ5BCHN3UppIGF6YiRQKnLXMObvDsyzHVv7mA5BCy13+WT4Ra8hyPNHN+c3nTXpH5+DTAQ=="
+    },
+    {
+      "checkpointSeq": 15,
+      "ledgerLength": 15,
+      "tipIndex": 14,
+      "tipHash": "0c2a3515bdbd954b7e00b9c1c68841d9a41c3ee4aa11b6661e11da7fade8a6f8",
+      "timestamp": 1794823271023,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":15,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":15,\"timestamp\":1794823271023,\"tipHash\":\"0c2a3515bdbd954b7e00b9c1c68841d9a41c3ee4aa11b6661e11da7fade8a6f8\",\"tipIndex\":14}",
+      "signature": "xf9+8rV8KJnnh/uMVEbwWoR43f5XtQ4Yba5C50SB3fjbeyC931w+cDC0x1zSWIsN1hhbKW/YgtlTdUWR2t5dAg=="
+    },
+    {
+      "checkpointSeq": 16,
+      "ledgerLength": 16,
+      "tipIndex": 15,
+      "tipHash": "8682cc83397d011741bf85bb9c9a0e5604e6a3a2a1fc5524fd969ef8911ba512",
+      "timestamp": 1794823353638,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":16,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":16,\"timestamp\":1794823353638,\"tipHash\":\"8682cc83397d011741bf85bb9c9a0e5604e6a3a2a1fc5524fd969ef8911ba512\",\"tipIndex\":15}",
+      "signature": "iyw6JwiHnWfS1oEbvZKsZAMJiyKrYGV11Q0dXXzfeMqXu4Ln9OODCvfMcJOscL3Yx8kM73K7L+WP20nMuF/CBQ=="
+    },
+    {
+      "checkpointSeq": 17,
+      "ledgerLength": 17,
+      "tipIndex": 16,
+      "tipHash": "8cfb4d01906bf0206c74636e1658148c1b6ffaf087b984f73199af02971a4a4f",
+      "timestamp": 1794823594610,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":17,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":17,\"timestamp\":1794823594610,\"tipHash\":\"8cfb4d01906bf0206c74636e1658148c1b6ffaf087b984f73199af02971a4a4f\",\"tipIndex\":16}",
+      "signature": "Bvevpc7eWpordBR/tskdyK7IeyA/aYnleI+TXEM+WnQr4bu1Iht1bK3VodI0iharzmQeOxT8OlT53Q7ojwovDg=="
+    },
+    {
+      "checkpointSeq": 18,
+      "ledgerLength": 18,
+      "tipIndex": 17,
+      "tipHash": "8773aae0da7f5222215bba104cbfd78970177de9c7520c48d88f811430c29f70",
+      "timestamp": 1794823621005,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":18,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":18,\"timestamp\":1794823621005,\"tipHash\":\"8773aae0da7f5222215bba104cbfd78970177de9c7520c48d88f811430c29f70\",\"tipIndex\":17}",
+      "signature": "C8Hn1aPvpmpWUcck6pcmB0pU3vNReYCkzFHsMsD9UAcSVSYQoy+VXCILss2ojHxx0Lr+OyBMPjGSiXYgCOEfAA=="
+    },
+    {
+      "checkpointSeq": 19,
+      "ledgerLength": 19,
+      "tipIndex": 18,
+      "tipHash": "82797b3de7a9431f3bc887e46092bf6e00334a00d9fe111b2beaeae887c73482",
+      "timestamp": 1794823651244,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":19,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":19,\"timestamp\":1794823651244,\"tipHash\":\"82797b3de7a9431f3bc887e46092bf6e00334a00d9fe111b2beaeae887c73482\",\"tipIndex\":18}",
+      "signature": "nmvO0iqvbxVi7wXjU+ZOyQ8tyrP7+rpNqU1zYhS3iqo5LBZb/I6m4rFin13yIG2kgF1gE6VvO474abmhdYkpCg=="
+    },
+    {
+      "checkpointSeq": 20,
+      "ledgerLength": 20,
+      "tipIndex": 19,
+      "tipHash": "a274e08b2c34fa294183d1178c3c14233a0f43d4f8a8516c8cb947cb0a985308",
+      "timestamp": 1794823651279,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":20,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":20,\"timestamp\":1794823651279,\"tipHash\":\"a274e08b2c34fa294183d1178c3c14233a0f43d4f8a8516c8cb947cb0a985308\",\"tipIndex\":19}",
+      "signature": "lKuMrvI9lVTl09fiwKPo7Ywpzprk9mSXcnStSLgrtduUgCSul3amwz2beTx9f8eBFbFsflVeDfOCuXdRlg5GDQ=="
+    },
+    {
+      "checkpointSeq": 21,
+      "ledgerLength": 21,
+      "tipIndex": 20,
+      "tipHash": "bba84bc28827ddf86722c80b20c2b63db274cf7edc795b94f090bafca2d8d83d",
+      "timestamp": 1794823651291,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":21,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":21,\"timestamp\":1794823651291,\"tipHash\":\"bba84bc28827ddf86722c80b20c2b63db274cf7edc795b94f090bafca2d8d83d\",\"tipIndex\":20}",
+      "signature": "5Xg4EL8tx0l+GJtvEHcBnFU8f+IE8ecSNKSvGZrB/6WgdMvyeM+7ZFwFaXru8TDZjAUm0fEu22vxImZiDoWPAg=="
+    },
+    {
+      "checkpointSeq": 22,
+      "ledgerLength": 22,
+      "tipIndex": 21,
+      "tipHash": "42e9be34bd6beccedb4545323bdb5d878657825f17e053a3b236ed56968e6177",
+      "timestamp": 1794823664300,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":22,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":22,\"timestamp\":1794823664300,\"tipHash\":\"42e9be34bd6beccedb4545323bdb5d878657825f17e053a3b236ed56968e6177\",\"tipIndex\":21}",
+      "signature": "l/D8OctvU29t4NRJ7rP7P79p9GBKznoH/ZZqQ5YuIpSvw512bA3LLFLojHKMv8Qgy1pNbAPp87PposQlMM93AA=="
+    },
+    {
+      "checkpointSeq": 23,
+      "ledgerLength": 23,
+      "tipIndex": 22,
+      "tipHash": "c18005aaccf886f3b65026d043337d676b6ee33e7483a9bb14cd156e6b477271",
+      "timestamp": 1794823664325,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":23,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":23,\"timestamp\":1794823664325,\"tipHash\":\"c18005aaccf886f3b65026d043337d676b6ee33e7483a9bb14cd156e6b477271\",\"tipIndex\":22}",
+      "signature": "YUmPJ60kkryrZVvkHfJfZc70v+EwynL8J0Qb7nej7F44GnXB6XGlqMKdgHgfIXHiuwsLqYwkqOYBHF694d1RDQ=="
+    },
+    {
+      "checkpointSeq": 24,
+      "ledgerLength": 24,
+      "tipIndex": 23,
+      "tipHash": "058cdd29661cd1268f7e0acb9115de275121760351aa9e113794f9d6884aeb27",
+      "timestamp": 1794823664337,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":24,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":24,\"timestamp\":1794823664337,\"tipHash\":\"058cdd29661cd1268f7e0acb9115de275121760351aa9e113794f9d6884aeb27\",\"tipIndex\":23}",
+      "signature": "k+GLBLtVeXPAc89TSWRLawdfxpAX/Al7xbYuFcWX/ozSYqBsegA/UKs/Z11gY/9w/lpniti3cpf7aobqoSRWDA=="
+    },
+    {
+      "checkpointSeq": 25,
+      "ledgerLength": 25,
+      "tipIndex": 24,
+      "tipHash": "60aa3a5bb74ce1c5de70975c6c1e9dca7bf427be67f73bd30d2322e87407d2e3",
+      "timestamp": 1794823677365,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":25,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":25,\"timestamp\":1794823677365,\"tipHash\":\"60aa3a5bb74ce1c5de70975c6c1e9dca7bf427be67f73bd30d2322e87407d2e3\",\"tipIndex\":24}",
+      "signature": "WPhJEo1bzKtpozB7NlMECSNTiktmA8QF18QWPxLiTHWvof+x67aBieyKL4J4jysczZiX6mlwyvPm7kUsU5WOCA=="
+    },
+    {
+      "checkpointSeq": 26,
+      "ledgerLength": 26,
+      "tipIndex": 25,
+      "tipHash": "013ef5f8bc2be92ecd12b6d1440fbca631f399088fe9dd4aff386650300602b0",
+      "timestamp": 1794823677386,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":26,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":26,\"timestamp\":1794823677386,\"tipHash\":\"013ef5f8bc2be92ecd12b6d1440fbca631f399088fe9dd4aff386650300602b0\",\"tipIndex\":25}",
+      "signature": "/9oSwX9Kx9jVbpfrvuam2+UGdfE5qi7LgFcbVsSGQtvQCUIvACfybVhPgWzytRSWs3XSaeFtCu05FHSDqY8GAA=="
+    },
+    {
+      "checkpointSeq": 27,
+      "ledgerLength": 27,
+      "tipIndex": 26,
+      "tipHash": "a4ed8e560215088956e76529f162e1a5e8ec8314398976fbb5ad586f3a82f1c1",
+      "timestamp": 1794823677396,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":27,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":27,\"timestamp\":1794823677396,\"tipHash\":\"a4ed8e560215088956e76529f162e1a5e8ec8314398976fbb5ad586f3a82f1c1\",\"tipIndex\":26}",
+      "signature": "FQ/CnDX2bgxRGlpBmLmYitB/nnTjQN/jnj7YM/eTdOz7jz60PtySC15tYflE/oOymx8Q1TEIRccS9elHi8dfBg=="
+    },
+    {
+      "checkpointSeq": 28,
+      "ledgerLength": 28,
+      "tipIndex": 27,
+      "tipHash": "beb054f2ea2f2132ee56fd1549392f621056268948142580d0353e774f55e8d1",
+      "timestamp": 1794823693878,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":28,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":28,\"timestamp\":1794823693878,\"tipHash\":\"beb054f2ea2f2132ee56fd1549392f621056268948142580d0353e774f55e8d1\",\"tipIndex\":27}",
+      "signature": "9b9+/i3lyVQto2TGK9yTklt8NXEHwScytmcNODyafrWpluvDB3S494Z5KORv1VnsfoWAaHKHOA03BppNnl1HCQ=="
+    },
+    {
+      "checkpointSeq": 29,
+      "ledgerLength": 29,
+      "tipIndex": 28,
+      "tipHash": "0191d50be67f9f07d650fc263aff15f38607895f665ab8b5eae86ec185d1e0da",
+      "timestamp": 1794823693902,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":29,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":29,\"timestamp\":1794823693902,\"tipHash\":\"0191d50be67f9f07d650fc263aff15f38607895f665ab8b5eae86ec185d1e0da\",\"tipIndex\":28}",
+      "signature": "kbwHFPYZYJBrltFynR+itBtGIsko8Dye1WI+bMA9iivm0yCBcnqPRemKoL19wIFM0VPpYBh2bqbINJMUebvSDA=="
+    },
+    {
+      "checkpointSeq": 30,
+      "ledgerLength": 30,
+      "tipIndex": 29,
+      "tipHash": "59a3fdeed24efaac0024a84e1ea296177962ddd4b52c36987c941046e168679e",
+      "timestamp": 1794823693914,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":30,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":30,\"timestamp\":1794823693914,\"tipHash\":\"59a3fdeed24efaac0024a84e1ea296177962ddd4b52c36987c941046e168679e\",\"tipIndex\":29}",
+      "signature": "wEbvyrs8o3MEmGhEelwUDCuHWsjcG6yoQ2A8Hk1S0q/chDvyALMdaKvBlr26CzhM/XL0tVXqgREHZ939STrqCQ=="
+    },
+    {
+      "checkpointSeq": 31,
+      "ledgerLength": 31,
+      "tipIndex": 30,
+      "tipHash": "422437dbc38f90e93c152011b5c54919524f4e8de6e71f5e1c8fd785047341a8",
+      "timestamp": 1794823735743,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":31,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":31,\"timestamp\":1794823735743,\"tipHash\":\"422437dbc38f90e93c152011b5c54919524f4e8de6e71f5e1c8fd785047341a8\",\"tipIndex\":30}",
+      "signature": "/lr2R6pYKgSN4A+oVyib2RA5K2tOWMaeyvBXj+/SZp1nepZj6cBuYWtNJYwtwkPGSkoyxu685q2Ofxy9SfxgBA=="
+    },
+    {
+      "checkpointSeq": 32,
+      "ledgerLength": 32,
+      "tipIndex": 31,
+      "tipHash": "d0429c44b8a7a5e157b79c28aedfcb6737d193e12185bf15185703b6f2cec153",
+      "timestamp": 1794823735769,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":32,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":32,\"timestamp\":1794823735769,\"tipHash\":\"d0429c44b8a7a5e157b79c28aedfcb6737d193e12185bf15185703b6f2cec153\",\"tipIndex\":31}",
+      "signature": "2AGr5L/a0ruRsZ27RvhPgdxHv5Q0TVH+vPn9EXU2Xdt474V+3ToXMr4R2wXfAcGd5mjpYoi6fsx/vMfIE7P7CA=="
+    },
+    {
+      "checkpointSeq": 33,
+      "ledgerLength": 33,
+      "tipIndex": 32,
+      "tipHash": "090833faf00ad71c2f79ff975d060c50de7b2d3e1033fb8f39de6831edbee7fb",
+      "timestamp": 1794823735778,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":33,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":33,\"timestamp\":1794823735778,\"tipHash\":\"090833faf00ad71c2f79ff975d060c50de7b2d3e1033fb8f39de6831edbee7fb\",\"tipIndex\":32}",
+      "signature": "M9pJH2a16n9AOtdcBwrcjh8qs7lnVtGsdREbopDCUuYceCDOzkd4chfaC8GhcDmiWGou+vTsdkkU4YJlsI2WBQ=="
+    },
+    {
+      "checkpointSeq": 34,
+      "ledgerLength": 34,
+      "tipIndex": 33,
+      "tipHash": "051bb704d4a472f50f983e6ec33db8dbb87aef3b603cdf1fa2bb2d843981096a",
+      "timestamp": 1794823736382,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":34,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":34,\"timestamp\":1794823736382,\"tipHash\":\"051bb704d4a472f50f983e6ec33db8dbb87aef3b603cdf1fa2bb2d843981096a\",\"tipIndex\":33}",
+      "signature": "CXmejBPMVDxZEkDiWBZLiXWUr0bWU/TlsjtK/AIiBiS+wLfFIaxeFF9SU8D69CORLOoqqhdp9Bf+ZswJJi23CA=="
+    },
+    {
+      "checkpointSeq": 35,
+      "ledgerLength": 35,
+      "tipIndex": 34,
+      "tipHash": "8a83e4c7020a8f7cc2ba1e946a041905ab9f64f442a83c90aa30d26cd98f9871",
+      "timestamp": 1794824233928,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":35,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":35,\"timestamp\":1794824233928,\"tipHash\":\"8a83e4c7020a8f7cc2ba1e946a041905ab9f64f442a83c90aa30d26cd98f9871\",\"tipIndex\":34}",
+      "signature": "kp92Mg5ckhsBccqUFk8BvE4lnv+CSOAuqowtk8TjVbqI91EjuxvBbkiv0Y9u0JmXBkjTri8vqzRI307TIHbKBw=="
+    },
+    {
+      "checkpointSeq": 36,
+      "ledgerLength": 36,
+      "tipIndex": 35,
+      "tipHash": "8482b15adcd196091cba5e2831a4da3de4d8c8e63c53d65e54a0e1a5666424d8",
+      "timestamp": 1794824335483,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":36,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":36,\"timestamp\":1794824335483,\"tipHash\":\"8482b15adcd196091cba5e2831a4da3de4d8c8e63c53d65e54a0e1a5666424d8\",\"tipIndex\":35}",
+      "signature": "hqgYnDZYU0ASvF0ehAvsO77mYNS8N/D7HNyhJq4WLVOTEfG8h1R4tAx32lViSEK6Tjizr5YwXCH0XG+EAPybAg=="
+    },
+    {
+      "checkpointSeq": 37,
+      "ledgerLength": 37,
+      "tipIndex": 36,
+      "tipHash": "79661aab78fb83c5b19a117826a92625bf43856358542e89c25290da2d0d5fef",
+      "timestamp": 1794824346069,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":37,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":37,\"timestamp\":1794824346069,\"tipHash\":\"79661aab78fb83c5b19a117826a92625bf43856358542e89c25290da2d0d5fef\",\"tipIndex\":36}",
+      "signature": "Vkg7D0DrSNbacm4zqLPEOVR7OKepEsJGCTben9W+LULAM3p1k8551w2dirzy4OlJseofGHhIelaN2fnEwEP+Cw=="
+    },
+    {
+      "checkpointSeq": 38,
+      "ledgerLength": 38,
+      "tipIndex": 37,
+      "tipHash": "242600ca3b7a74a0810c83b59c1645571aa235869423268871ec27f4ddd752ef",
+      "timestamp": 1794824356192,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":38,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":38,\"timestamp\":1794824356192,\"tipHash\":\"242600ca3b7a74a0810c83b59c1645571aa235869423268871ec27f4ddd752ef\",\"tipIndex\":37}",
+      "signature": "bV+UJRyWIwyt3ZSmLknLJs7GYY/TXIP7ypmQJKT3FvkzXLrGn/PiWPgBNWUtqF5+C2oTOxkwXmJUN4ZzSKjgDQ=="
+    },
+    {
+      "checkpointSeq": 39,
+      "ledgerLength": 39,
+      "tipIndex": 38,
+      "tipHash": "5730e02481338e715e3c1018b34cb74428e029b320bd1c0f730994d29103dedb",
+      "timestamp": 1794824356205,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":39,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":39,\"timestamp\":1794824356205,\"tipHash\":\"5730e02481338e715e3c1018b34cb74428e029b320bd1c0f730994d29103dedb\",\"tipIndex\":38}",
+      "signature": "mZvCjnX/EVFh+X5jyO1T3LesnTZ5FQDgqfKNguo4Ft9Vaa/yEdXq+F75bDVXqxzndaPk86mNcDA3iBYUzrxaBQ=="
+    },
+    {
+      "checkpointSeq": 40,
+      "ledgerLength": 40,
+      "tipIndex": 39,
+      "tipHash": "b6cb9ecd6abd93daa09e66f7ffad8e620ff97bc86d9eb81a29bf87772d271fee",
+      "timestamp": 1794824356259,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":40,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":40,\"timestamp\":1794824356259,\"tipHash\":\"b6cb9ecd6abd93daa09e66f7ffad8e620ff97bc86d9eb81a29bf87772d271fee\",\"tipIndex\":39}",
+      "signature": "WpC/TwSLnxhkIs/xZ75WWw5k/O5FG65zN3xYJweLTI+K0CCaLV2sXoPw/LT40bAGcgzksBt7xUN6j8p7mznlAQ=="
     }
   ],
   "recoveryQueuePaths": [],

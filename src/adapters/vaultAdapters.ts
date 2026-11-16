@@ -10,6 +10,7 @@ import { generateDeterministicEmbedding } from '../services/snapshotPipeline';
 import { validateSqlRuleS4, ASTGuardResult } from '../utils/sovereignSubstrate';
 import { sha256Hex } from '../utils/securityCrypto';
 import { canonicalize } from '../utils/contractRegistry';
+import { createInitialLiquidChromeOsDb, queryLiquidChromeOsDb } from '../utils/liquidChromeOs';
 
 export interface DuckDbVaultQueryResult {
   adapter: 'duckdb';
@@ -79,6 +80,50 @@ export async function readDuckDbVault(options: {
   }
 
   const normalizedSql = sql.toUpperCase();
+  const osTableMatch = sql.match(/\bFROM\s+(os_[a-zA-Z0-9_]+)/i);
+  if (osTableMatch) {
+    if (useServerGuard && typeof fetch === 'function') {
+      try {
+        const osResp = await fetch('/api/os/db/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sql }),
+        });
+        if (osResp.ok) {
+          const osData = await osResp.json();
+          if (osData?.allowed && Array.isArray(osData.rows)) {
+            return {
+              adapter: 'duckdb',
+              sql,
+              astGuard: osData.astGuard || astGuard,
+              columns: osData.columns || [],
+              rows: osData.rows,
+              rowCount: osData.rows.length,
+              payloadDigest: osData.payloadDigest || sha256Hex(canonicalize(osData.rows)),
+              source: 'substrate_endpoint',
+              executedAt: osData.executedAt || Date.now(),
+            };
+          }
+        }
+      } catch {
+        // Fallback to deterministic local OS DB snapshot when offline or in unit tests
+      }
+    }
+
+    const localOsRes = queryLiquidChromeOsDb(createInitialLiquidChromeOsDb(), sql);
+    return {
+      adapter: 'duckdb',
+      sql,
+      astGuard: localOsRes.astGuard,
+      columns: localOsRes.columns,
+      rows: localOsRes.rows,
+      rowCount: localOsRes.rowCount,
+      payloadDigest: localOsRes.payloadDigest,
+      source: 'workspace_columnar',
+      executedAt: localOsRes.executedAt,
+    };
+  }
+
   const isLanguageAggregation =
     normalizedSql.includes('GROUP BY') && normalizedSql.includes('LANGUAGE');
   const isCommitQuery = normalizedSql.includes('COMMITS');

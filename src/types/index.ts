@@ -128,10 +128,30 @@ export interface ModelHyperparameters {
 export interface DeploymentRecord {
   id: string;
   projectName: string;
+  channel?: 'edge' | 'genspark' | 'cloudflare';
   domain: string;
   url: string;
   status: 'DEPLOYING' | 'ACTIVE' | 'ERROR';
   deployedAt: string;
+  treeDigest?: string;
+  bindingsDigest?: string;
+  ed25519Verification?: {
+    verified: boolean;
+    algorithm: 'Ed25519';
+    keyId: string;
+    receiptId: string;
+    signaturePreview: string;
+    linearizationSeq: number;
+    clientVerified?: boolean;
+    clientVerifiedAt?: number;
+    clientCode?: string;
+  };
+  serviceToService?: {
+    honoHealth: string;
+    cloudflareBindings: string;
+    workerName: string;
+    handshakeToken: string;
+  };
   security: {
     encryptionAtRest: string;
     sslStatus: string;

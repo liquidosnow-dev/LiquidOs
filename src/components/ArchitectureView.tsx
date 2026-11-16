@@ -19,7 +19,30 @@ import {
   GitBranch,
   ArrowRight,
   FolderTree,
+  Plug,
+  HardDrive,
+  Workflow,
+  BookOpen,
+  RefreshCw,
 } from 'lucide-react';
+import type { AuditLedgerEntry, Project } from '../types';
+import type { ControlPlaneState } from '../utils/ingestionControlPlane';
+import { recordControlPlaneAudit } from '../utils/ingestionControlPlane';
+import {
+  HARDWARE_MODULE_CHOICES,
+  createInitialLiquidChromeOsDb,
+  queryLiquidChromeOsDb,
+  buildLocalAppBindingRecord,
+} from '../utils/liquidChromeOs';
+import type {
+  CodexFlowWorkflowSpec,
+  LiquidChromeOsDatabaseState,
+  OsAppBindingRecord,
+  OsBuildProfileId,
+  OsDbSqlQueryResult,
+  OsHardwareSelection,
+  OsKnowledgeCatalogEntry,
+} from '../utils/liquidChromeOs';
 import {
   validateSqlRuleS4,
   verifyIngressToken,
@@ -35,13 +58,18 @@ import {
 } from '../utils/sovereignSubstrate';
 
 interface ArchitectureViewProps {
+  project?: Project;
+  controlPlaneState?: ControlPlaneState;
+  ensureControlPlaneSession?: () => Promise<string | null>;
+  buildControlPlaneHeaders?: () => Record<string, string>;
+  onOsAuditEvent?: (entry: AuditLedgerEntry) => void;
   onOpenIngressShield?: () => void;
   onOpenManifest?: () => void;
   onOpenEnterpriseMcp?: () => void;
   onOpenKineticMonolith?: () => void;
 }
 
-type ArchSubTab = 'planes' | 'sql_guard' | 'mcp_hud' | 'monorepo';
+type ArchSubTab = 'os_wire' | 'planes' | 'sql_guard' | 'mcp_hud' | 'monorepo';
 
 const SQL_PRESETS = [
   {
@@ -68,17 +96,58 @@ const SQL_PRESETS = [
 
 const SIGNAL_STEPS: SignalExecutionState[] = ['PREPARED', 'SIGNED', 'READ', 'CONFIRMED'];
 
+const OS_DB_SQL_PRESETS = [
+  { label: 'Layers (10)', sql: 'SELECT * FROM os_layers LIMIT 10' },
+  { label: 'Profiles (5)', sql: 'SELECT * FROM os_build_profiles LIMIT 10' },
+  { label: 'Manifest Repos', sql: 'SELECT * FROM os_manifest_repos LIMIT 25' },
+  { label: 'Copy/Link Maps', sql: 'SELECT * FROM os_manifest_mappings LIMIT 10' },
+  { label: 'CodexFlow (25)', sql: 'SELECT * FROM os_codexflow_workflows LIMIT 25' },
+  { label: 'Knowledge/Skills', sql: 'SELECT * FROM os_knowledge_catalog LIMIT 30' },
+  { label: 'App Bindings', sql: 'SELECT * FROM os_app_bindings LIMIT 10' },
+  { label: 'HW Config', sql: 'SELECT * FROM os_hardware_config LIMIT 5' },
+  { label: 'Block ; DROP', sql: 'SELECT * FROM os_layers; DROP TABLE os_layers;' },
+];
+
 export const ArchitectureView: React.FC<ArchitectureViewProps> = ({
+  project,
+  controlPlaneState,
+  ensureControlPlaneSession,
+  buildControlPlaneHeaders,
+  onOsAuditEvent,
   onOpenIngressShield,
   onOpenManifest,
   onOpenEnterpriseMcp,
   onOpenKineticMonolith,
 }) => {
-  const [subTab, setSubTab] = useState<ArchSubTab>('planes');
+  const [subTab, setSubTab] = useState<ArchSubTab>('os_wire');
   const [selectedDiagram, setSelectedDiagram] = useState<
     'pipeline_infographic' | 'liquid_os_kmp' | 'apollo_settings' | 'agents_toolkit' | 'lovable_ide'
   >('pipeline_infographic');
   const [activeBarrier, setActiveBarrier] = useState<string>('SECURITY_BARRIER');
+
+  // Liquid Chrome OS Plug & Play Database State
+  const [localOsDb, setLocalOsDb] = useState<LiquidChromeOsDatabaseState>(() =>
+    createInitialLiquidChromeOsDb()
+  );
+  const [osDbDigest, setOsDbDigest] = useState<string>('');
+  const [osSqlInput, setOsSqlInput] = useState<string>(OS_DB_SQL_PRESETS[0].sql);
+  const [osSqlResult, setOsSqlResult] = useState<OsDbSqlQueryResult>(() =>
+    queryLiquidChromeOsDb(createInitialLiquidChromeOsDb(), OS_DB_SQL_PRESETS[0].sql)
+  );
+  const [isWiringOs, setIsWiringOs] = useState<boolean>(false);
+  const [isSwappingHw, setIsSwappingHw] = useState<boolean>(false);
+  const [workflowFilter, setWorkflowFilter] = useState<'ALL' | CodexFlowWorkflowSpec['category']>('ALL');
+  const [runningWorkflowSlug, setRunningWorkflowSlug] = useState<string | null>(null);
+  const [workflowRunResult, setWorkflowRunResult] = useState<{
+    ok: boolean;
+    slug: string;
+    message: string;
+    phases?: Array<{ phase: string; status: string; rule?: string; receiptId?: string; keyId?: string }>;
+  } | null>(null);
+  const [wireStatusNotice, setWireStatusNotice] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
 
   // Rule S4 SQL Guard & Constant-Time Token Verification State
   const [sqlInput, setSqlInput] = useState<string>(SQL_PRESETS[0].sql);
@@ -115,6 +184,34 @@ export const ArchitectureView: React.FC<ArchitectureViewProps> = ({
   const [isDispatchingHud, setIsDispatchingHud] = useState(false);
   const [copiedBridge, setCopiedBridge] = useState(false);
 
+  const refreshOsState = async () => {
+    try {
+      const r = await fetch('/api/os/state');
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data && Array.isArray(data.layers)) {
+        setLocalOsDb((prev) => ({
+          ...prev,
+          specVersion: data.specVersion || prev.specVersion,
+          manifestTotalRepos: data.manifestTotalRepos || prev.manifestTotalRepos,
+          activeBuildProfile: data.activeBuildProfile || prev.activeBuildProfile,
+          hardwareSelection: data.hardwareSelection || prev.hardwareSelection,
+          layers: data.layers,
+          buildProfiles: data.buildProfiles || prev.buildProfiles,
+          manifestMappings: data.manifestMappings || prev.manifestMappings,
+          manifestRepos: data.manifestRepos || prev.manifestRepos,
+          workflows: data.workflows || prev.workflows,
+          knowledgeCatalog: data.knowledgeCatalog || prev.knowledgeCatalog,
+          appBindings: Array.isArray(data.appBindings) ? data.appBindings : prev.appBindings,
+          updatedAt: data.updatedAt || Date.now(),
+        }));
+        if (data.dbDigest) setOsDbDigest(data.dbDigest);
+      }
+    } catch {
+      // Offline fallback uses localOsDb
+    }
+  };
+
   useEffect(() => {
     fetch('/api/substrate/ledger')
       .then((r) => r.json())
@@ -123,7 +220,221 @@ export const ArchitectureView: React.FC<ArchitectureViewProps> = ({
         if (data?.integrity) setLedgerValid(Boolean(data.integrity.valid));
       })
       .catch(() => {});
+    refreshOsState();
   }, []);
+
+  const resolveAuthHeaders = async (): Promise<Record<string, string>> => {
+    if (ensureControlPlaneSession) {
+      await ensureControlPlaneSession();
+    } else {
+      await fetch('/api/control-plane/session', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor: 'human:mercy' }),
+      }).catch(() => {});
+    }
+    if (buildControlPlaneHeaders) {
+      return buildControlPlaneHeaders();
+    }
+    return {
+      'Content-Type': 'application/json',
+      'X-Workspace-Id': 'ws_unified_one',
+      'X-Request-Nonce': `n_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`,
+    };
+  };
+
+  const handleRunOsSqlQuery = async (overrideSql?: string) => {
+    const query = overrideSql !== undefined ? overrideSql : osSqlInput;
+    if (overrideSql !== undefined) setOsSqlInput(overrideSql);
+    try {
+      const res = await fetch('/api/os/db/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: query }),
+      });
+      const data = await res.json();
+      setOsSqlResult({
+        allowed: Boolean(data.allowed),
+        table: data.table || 'unknown',
+        sql: query,
+        astGuard: data.astGuard || validateSqlRuleS4(query),
+        columns: Array.isArray(data.columns) ? data.columns : [],
+        rows: Array.isArray(data.rows) ? data.rows : [],
+        rowCount: Number(data.rowCount || 0),
+        payloadDigest: data.payloadDigest || '',
+        executedAt: data.executedAt || Date.now(),
+        reason: data.reason,
+      });
+      if (data.ledgerEntry) {
+        setLedgerEntries((prev) => [data.ledgerEntry, ...prev].slice(0, 15));
+      }
+    } catch {
+      setOsSqlResult(queryLiquidChromeOsDb(localOsDb, query));
+    }
+  };
+
+  const handleWireAppToOs = async (overrideProfile?: OsBuildProfileId) => {
+    setIsWiringOs(true);
+    setWireStatusNotice(null);
+    const targetProject = project || {
+      id: 'proj_liquid_one',
+      name: 'LiquidOS Mercury Vault',
+      files: [],
+    };
+    const nextProfile = overrideProfile || localOsDb.activeBuildProfile;
+    try {
+      const headers = await resolveAuthHeaders();
+      const permit = controlPlaneState?.activePermit;
+      const res = await fetch('/api/os/wire', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({
+          permitId: permit?.permitId || null,
+          projectId: targetProject.id,
+          projectName: targetProject.name,
+          files: targetProject.files,
+          buildProfile: nextProfile,
+          hardwareSelection: localOsDb.hardwareSelection,
+          expectedEpoch: controlPlaneState?.epoch,
+          expectedFencingVersion: permit?.fencingVersion,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        if (data.snapshot) {
+          setLocalOsDb((prev) => ({
+            ...prev,
+            activeBuildProfile: data.snapshot.activeBuildProfile || nextProfile,
+            hardwareSelection: data.snapshot.hardwareSelection || prev.hardwareSelection,
+            appBindings: data.snapshot.appBindings || prev.appBindings,
+            updatedAt: data.snapshot.updatedAt || Date.now(),
+          }));
+        }
+        if (data.dbDigest) setOsDbDigest(data.dbDigest);
+        setWireStatusNotice({
+          ok: true,
+          message: `Wired ${targetProject.name} (${targetProject.files.length} files -> ${nextProfile}) · Ed25519 Receipt ${data.receipt?.receiptId}`,
+        });
+        if (onOsAuditEvent && data.receipt) {
+          const fakeLedger = recordControlPlaneAudit(
+            [],
+            'os_database_wired',
+            data.binding?.bindingId || targetProject.id,
+            'human:mercy',
+            {
+              profile: nextProfile,
+              boundFiles: targetProject.files.length,
+              receiptId: data.receipt.receiptId,
+              keyId: data.receipt.keyId,
+            }
+          );
+          if (fakeLedger[0]) onOsAuditEvent(fakeLedger[0]);
+        }
+        await handleRunOsSqlQuery('SELECT * FROM os_app_bindings LIMIT 10');
+      } else {
+        setWireStatusNotice({
+          ok: false,
+          message: data?.error || `Control Plane denied OS DB wire (HTTP ${res.status}).`,
+        });
+      }
+    } catch {
+      const localBind = buildLocalAppBindingRecord({
+        db: localOsDb,
+        projectId: targetProject.id,
+        projectName: targetProject.name,
+        files: targetProject.files,
+        buildProfile: nextProfile,
+      });
+      setLocalOsDb(localBind.nextDb);
+      setWireStatusNotice({
+        ok: true,
+        message: `Local preview bound ${targetProject.name} (${localBind.binding.bindingId})`,
+      });
+    } finally {
+      setIsWiringOs(false);
+    }
+  };
+
+  const handleSwapHardware = async (patch: Partial<OsHardwareSelection>) => {
+    const nextHw = { ...localOsDb.hardwareSelection, ...patch };
+    setLocalOsDb((prev) => ({ ...prev, hardwareSelection: nextHw }));
+    setIsSwappingHw(true);
+    try {
+      const headers = await resolveAuthHeaders();
+      const permit = controlPlaneState?.activePermit;
+      const res = await fetch('/api/os/hardware', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({
+          permitId: permit?.permitId || null,
+          hardwareSelection: nextHw,
+          buildProfile: localOsDb.activeBuildProfile,
+          expectedEpoch: controlPlaneState?.epoch,
+          expectedFencingVersion: permit?.fencingVersion,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        if (data.dbDigest) setOsDbDigest(data.dbDigest);
+        setWireStatusNotice({
+          ok: true,
+          message: `Hardware matrix attested (${nextHw.securityChip}/${nextHw.ecFirmware}/${nextHw.bootloader}) · Receipt ${data.receipt?.receiptId}`,
+        });
+      } else if (data?.error) {
+        setWireStatusNotice({ ok: false, message: data.error });
+      }
+    } catch {
+      // Local optimistic update remains visible
+    } finally {
+      setIsSwappingHw(false);
+    }
+  };
+
+  const handleRunCodexWorkflow = async (wf: CodexFlowWorkflowSpec) => {
+    setRunningWorkflowSlug(wf.slug);
+    try {
+      const headers = await resolveAuthHeaders();
+      const permit = controlPlaneState?.activePermit;
+      const res = await fetch('/api/os/workflow/run', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({
+          permitId: permit?.permitId || null,
+          workflowSlugOrId: wf.slug,
+          targetProjectId: project?.id,
+          expectedEpoch: controlPlaneState?.epoch,
+          expectedFencingVersion: permit?.fencingVersion,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        setWorkflowRunResult({
+          ok: true,
+          slug: wf.slug,
+          message: `CodexFlow #${wf.id} (${wf.slug}) attested via Ed25519 receipt ${data.receipt?.receiptId}`,
+          phases: data.phases,
+        });
+      } else {
+        setWorkflowRunResult({
+          ok: false,
+          slug: wf.slug,
+          message: data?.error || `Workflow blocked at Policy First (${wf.policyRule}).`,
+        });
+      }
+    } catch {
+      setWorkflowRunResult({
+        ok: false,
+        slug: wf.slug,
+        message: 'Server unreachable for CodexFlow workflow attestation.',
+      });
+    } finally {
+      setRunningWorkflowSlug(null);
+    }
+  };
 
   const handleEvaluateRuleS4 = async (overrideSql?: string) => {
     const query = overrideSql !== undefined ? overrideSql : sqlInput;
@@ -333,6 +644,7 @@ export const ArchitectureView: React.FC<ArchitectureViewProps> = ({
         {/* Interactive Substrate Navigation Tabs */}
         <div className="flex items-center gap-1.5 pt-3 border-t border-white/10 overflow-x-auto scrollbar-none">
           {[
+            { id: 'os_wire', label: 'Plug & Play OS DB (297 Repos)', icon: Plug },
             { id: 'planes', label: '5-Plane Substrate & Barriers', icon: Cpu },
             { id: 'sql_guard', label: 'Rule S4 AST Guard & Crypto Gate', icon: Lock },
             { id: 'mcp_hud', label: '22-Tool MCP & 491px Signal HUD', icon: Terminal },
@@ -358,6 +670,437 @@ export const ArchitectureView: React.FC<ArchitectureViewProps> = ({
           })}
         </div>
       </div>
+
+      {/* TAB 0: Plug & Play App <-> Liquid Chrome OS Database Wire-In */}
+      {subTab === 'os_wire' && (
+        <div className="space-y-4">
+          {/* App-to-OS Plug & Play Wire Status + Profile Selector */}
+          <div className="p-5 rounded-2xl glass-surface-2 space-y-4">
+            <div className="flex flex-col @[840px]:flex-row @[840px]:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="text-[11px] font-mono text-cyan-300 flex items-center gap-2 flex-wrap">
+                  <span>LIQUID CHROME OS · CRUX MANIFEST (297 REPOS) + AN_NEXUS</span>
+                  <span className="text-slate-500">·</span>
+                  <span>MODE: {controlPlaneState?.mode || 'ACTIVE'}</span>
+                  {osDbDigest && (
+                    <>
+                      <span className="text-slate-500">·</span>
+                      <span>DB DIGEST: {osDbDigest.slice(0, 14)}…</span>
+                    </>
+                  )}
+                </div>
+                <h3 className="text-base font-bold text-white">
+                  Plug &amp; Play App ↔ OS Database Wire-In
+                </h3>
+                <p className="text-xs text-slate-400 max-w-2xl">
+                  Binds your live workspace files ({project?.name || 'LiquidOS Mercury Vault'},{' '}
+                  {project?.files.length || 0} files) into persistent OS database tables with Control Plane Ed25519 attestation, modular hardware matrix swaps, and Rule S4 SQL queryability.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => refreshOsState()}
+                  className="px-3 py-2 rounded-lg glass-surface-1 hover:border-white/25 text-xs font-medium text-slate-300 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-cyan-300" />
+                  <span>Sync Snapshot</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleWireAppToOs()}
+                  disabled={isWiringOs}
+                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500/90 to-blue-600/90 hover:from-cyan-400 hover:to-blue-500 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                >
+                  <Plug className="w-3.5 h-3.5" />
+                  <span>{isWiringOs ? 'Wiring App -> OS DB...' : 'Wire App → OS Database'}</span>
+                </button>
+              </div>
+            </div>
+
+            {wireStatusNotice && (
+              <div
+                className={`p-3 rounded-xl border text-xs font-mono flex items-center gap-2 ${
+                  wireStatusNotice.ok
+                    ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
+                    : 'bg-rose-950/30 border-rose-500/30 text-rose-200'
+                }`}
+              >
+                {wireStatusNotice.ok ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                )}
+                <span className="truncate">{wireStatusNotice.message}</span>
+              </div>
+            )}
+
+            {/* 5 Chromium OS Build Profiles */}
+            <div className="grid grid-cols-1 @[560px]:grid-cols-2 @[920px]:grid-cols-5 gap-2.5 pt-2 border-t border-white/10">
+              {localOsDb.buildProfiles.map((prof) => {
+                const isActive = localOsDb.activeBuildProfile === prof.id;
+                return (
+                  <button
+                    key={prof.id}
+                    type="button"
+                    onClick={() => handleWireAppToOs(prof.id)}
+                    className={`p-3 rounded-xl text-left transition-all cursor-pointer ${
+                      isActive
+                        ? 'glass-surface-3 border-cyan-400/50'
+                        : 'glass-surface-1 hover:border-white/25'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px] font-mono">
+                      <span className={isActive ? 'text-cyan-300 font-bold' : 'text-slate-400'}>
+                        {prof.id}
+                      </span>
+                      <span className="text-slate-300 tabular-nums">{prof.repoCount} repos</span>
+                    </div>
+                    <div className="text-xs font-semibold text-white mt-1 truncate">{prof.name}</div>
+                    <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">{prof.workflowFocus}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Active App Bindings Strip */}
+            {localOsDb.appBindings.length > 0 && (
+              <div className="pt-2 border-t border-white/10 space-y-1.5">
+                <div className="text-[11px] font-mono text-slate-400">
+                  ACTIVE APP ↔ OS DATABASE BINDINGS ({localOsDb.appBindings.length})
+                </div>
+                <div className="grid grid-cols-1 @[760px]:grid-cols-2 gap-2">
+                  {localOsDb.appBindings.slice(0, 4).map((b: OsAppBindingRecord) => (
+                    <div
+                      key={b.bindingId}
+                      className="p-2.5 rounded-xl bg-black/35 border border-white/10 text-[11px] font-mono flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-cyan-300 font-semibold truncate">
+                          {b.projectName} · profile={b.buildProfile}
+                        </div>
+                        <div className="text-slate-400 truncate">
+                          files={b.boundFilesCount} · seq=#{b.linearizationSeq} · tree={b.treeDigest.slice(0, 12)}…
+                        </div>
+                      </div>
+                      <span className="text-emerald-300 shrink-0">
+                        {b.receiptId ? b.receiptId.slice(0, 14) : 'bound'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Modular Hardware Selector + Rule S4 OS SQL Console */}
+          <div className="grid grid-cols-1 @[920px]:grid-cols-12 gap-4">
+            {/* Left 5 cols: Modular Hardware Matrix */}
+            <div className="@[920px]:col-span-5 p-5 rounded-2xl glass-surface-2 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="w-4 h-4 text-cyan-300" />
+                  <h3 className="text-sm font-bold text-white">Modular OS Hardware Matrix</h3>
+                </div>
+                <span className="text-[10px] font-mono text-slate-400">
+                  {isSwappingHw ? 'Attesting...' : 'Hot-Swappable'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                {(
+                  [
+                    { key: 'kernelGeneration', label: 'Kernel', options: HARDWARE_MODULE_CHOICES.kernelGeneration },
+                    { key: 'toolchain', label: 'Toolchain', options: HARDWARE_MODULE_CHOICES.toolchain },
+                    { key: 'architecture', label: 'Architecture', options: HARDWARE_MODULE_CHOICES.architecture },
+                    { key: 'securityChip', label: 'Security Chip', options: HARDWARE_MODULE_CHOICES.securityChip },
+                    { key: 'ecFirmware', label: 'EC Firmware', options: HARDWARE_MODULE_CHOICES.ecFirmware },
+                    { key: 'bootloader', label: 'Bootloader', options: HARDWARE_MODULE_CHOICES.bootloader },
+                    { key: 'hypervisor', label: 'Hypervisor', options: HARDWARE_MODULE_CHOICES.hypervisor },
+                  ] as const
+                ).map((field) => (
+                  <label key={field.key} className="block space-y-1">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">{field.label}</span>
+                    <select
+                      value={localOsDb.hardwareSelection[field.key]}
+                      onChange={(e) =>
+                        handleSwapHardware({ [field.key]: e.target.value } as Partial<OsHardwareSelection>)
+                      }
+                      className="w-full rounded-lg bg-black/50 border border-white/10 px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-400"
+                    >
+                      {field.options.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase">Board Overlay</span>
+                  <input
+                    type="text"
+                    value={localOsDb.hardwareSelection.boardOverlay}
+                    onChange={(e) =>
+                      setLocalOsDb((prev) => ({
+                        ...prev,
+                        hardwareSelection: { ...prev.hardwareSelection, boardOverlay: e.target.value },
+                      }))
+                    }
+                    className="w-full rounded-lg bg-black/50 border border-white/10 px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-400"
+                  />
+                </label>
+              </div>
+
+              {/* Copyfile / Linkfile Mappings */}
+              <div className="pt-2 border-t border-white/10 space-y-1.5">
+                <div className="text-[10px] font-mono text-slate-400">
+                  MANIFEST COPYFILE / LINKFILE MAPPINGS
+                </div>
+                {localOsDb.manifestMappings.map((m) => (
+                  <div
+                    key={m.targetPath}
+                    className="p-2 rounded-lg bg-black/35 border border-white/10 text-[11px] font-mono"
+                  >
+                    <div className="flex items-center justify-between text-cyan-300">
+                      <span>{m.sourcePath} → {m.targetPath}</span>
+                      <span className="text-amber-300">{m.operation}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{m.purpose}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Right 7 cols: Rule S4 Live OS Database SQL Console */}
+            <div className="@[920px]:col-span-7 p-5 rounded-2xl glass-surface-2 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Database className="w-4 h-4 text-cyan-300" />
+                  <h3 className="text-sm font-bold text-white">
+                    OS Database Live SQL Console (/api/os/db/query · Rule S4)
+                  </h3>
+                </div>
+                <span
+                  className={`text-[11px] font-mono font-semibold ${
+                    osSqlResult.allowed ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                >
+                  {osSqlResult.allowed ? `${osSqlResult.rowCount} rows · ${osSqlResult.table}` : 'RULE S4 BLOCKED'}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {OS_DB_SQL_PRESETS.map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => handleRunOsSqlQuery(p.sql)}
+                    className="px-2 py-1 rounded-lg glass-surface-1 hover:border-cyan-400/50 text-[11px] font-mono text-slate-200 cursor-pointer"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={osSqlInput}
+                  onChange={(e) => setOsSqlInput(e.target.value)}
+                  spellCheck={false}
+                  className="flex-1 rounded-lg bg-black/50 border border-white/10 px-3 py-1.5 text-xs font-mono text-cyan-200 focus:outline-none focus:border-cyan-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleRunOsSqlQuery()}
+                  className="px-3 py-1.5 rounded-lg bg-cyan-500/90 hover:bg-cyan-400 text-xs font-semibold text-slate-950 flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Query OS DB</span>
+                </button>
+              </div>
+
+              {!osSqlResult.allowed ? (
+                <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/30 text-xs font-mono text-rose-200">
+                  {osSqlResult.reason || 'Query rejected by Rule S4 AST Guard.'}
+                </div>
+              ) : (
+                <div className="border border-white/10 rounded-xl overflow-auto max-h-64 bg-black/35">
+                  <table className="w-full text-left border-collapse text-[11px] font-mono">
+                    <thead className="bg-white/5 text-cyan-300 sticky top-0">
+                      <tr>
+                        {osSqlResult.columns.map((col) => (
+                          <th key={col} className="px-2.5 py-2 border-b border-white/10 whitespace-nowrap">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-slate-300">
+                      {osSqlResult.rows.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-3 text-slate-500" colSpan={Math.max(1, osSqlResult.columns.length)}>
+                            No matching rows returned. Click "Wire App → OS Database" to populate os_app_bindings.
+                          </td>
+                        </tr>
+                      ) : (
+                        osSqlResult.rows.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-white/5">
+                            {osSqlResult.columns.map((col) => (
+                              <td key={col} className="px-2.5 py-1.5 max-w-[240px] truncate">
+                                {String(row[col] ?? '')}
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {osSqlResult.payloadDigest && (
+                <div className="text-[10px] font-mono text-slate-500 truncate">
+                  SHA-256 payloadDigest: {osSqlResult.payloadDigest}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 10-Layer Execution Engine Matrix */}
+          <div className="p-5 rounded-2xl glass-surface-2 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-cyan-300" />
+                <h3 className="text-sm font-bold text-white">
+                  10-Layer Agentic Execution Engine &amp; Operational Phases
+                </h3>
+              </div>
+              <span className="text-[11px] font-mono text-slate-400">
+                Layer 1 LoopForge → Layer 10 an_nexus
+              </span>
+            </div>
+            <div className="grid grid-cols-1 @[560px]:grid-cols-2 @[920px]:grid-cols-5 gap-2.5">
+              {localOsDb.layers.map((layer) => (
+                <div key={layer.layerIndex} className="p-3 rounded-xl glass-surface-1 space-y-1">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-cyan-300">
+                    <span>LAYER {layer.layerIndex}</span>
+                    <span className="text-slate-400 truncate max-w-[120px]">{layer.substratePath}</span>
+                  </div>
+                  <div className="text-xs font-bold text-white">{layer.layerName}</div>
+                  <div className="text-[11px] font-mono text-emerald-300">{layer.primaryComponent}</div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">{layer.responsibility}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* CodexFlow 25-Workflow 3-Phase Pipeline + Knowledge Catalog */}
+          <div className="grid grid-cols-1 @[920px]:grid-cols-12 gap-4">
+            <div className="@[920px]:col-span-7 p-5 rounded-2xl glass-surface-2 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Workflow className="w-4 h-4 text-cyan-300" />
+                  <h3 className="text-sm font-bold text-white">
+                    CodexFlow 25-Workflow Attestation Pipeline (Policy First → Test Second → Attest Last)
+                  </h3>
+                </div>
+                <select
+                  value={workflowFilter}
+                  onChange={(e) => setWorkflowFilter(e.target.value as any)}
+                  className="rounded-lg bg-black/50 border border-white/10 px-2.5 py-1 text-[11px] font-mono text-slate-200"
+                >
+                  <option value="ALL">All Categories (25)</option>
+                  <option value="Runtime & Governance">Runtime &amp; Governance</option>
+                  <option value="Assurance & Evidence">Assurance &amp; Evidence</option>
+                  <option value="Sovereign Memory & Vector">Sovereign Memory &amp; Vector</option>
+                  <option value="Hardware & Interoperability">Hardware &amp; Interoperability</option>
+                  <option value="Experience & Telemetry">Experience &amp; Telemetry</option>
+                </select>
+              </div>
+
+              {workflowRunResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs font-mono space-y-1.5 ${
+                    workflowRunResult.ok
+                      ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
+                      : 'bg-rose-950/30 border-rose-500/30 text-rose-200'
+                  }`}
+                >
+                  <div>{workflowRunResult.message}</div>
+                  {workflowRunResult.phases && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[10px]">
+                      {workflowRunResult.phases.map((ph) => (
+                        <div key={ph.phase} className="p-1.5 rounded bg-black/40 border border-white/10">
+                          <div className="text-cyan-300 font-semibold">{ph.phase}</div>
+                          <div className="text-emerald-300">{ph.status}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="divide-y divide-white/10 border border-white/10 rounded-xl max-h-72 overflow-y-auto bg-black/25">
+                {localOsDb.workflows
+                  .filter((w) => workflowFilter === 'ALL' || w.category === workflowFilter)
+                  .map((wf) => (
+                    <div
+                      key={wf.id}
+                      className="px-3 py-2 flex items-center justify-between gap-3 text-xs hover:bg-white/5"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-mono text-cyan-300 font-semibold truncate">
+                          #{wf.id} {wf.slug}{' '}
+                          <span className="text-slate-500 font-normal">· {wf.policyRule}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">{wf.action}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRunCodexWorkflow(wf)}
+                        disabled={runningWorkflowSlug === wf.slug}
+                        className="px-2.5 py-1 rounded-lg glass-surface-1 hover:border-cyan-400/50 text-[11px] font-mono text-cyan-200 shrink-0 cursor-pointer disabled:opacity-50"
+                      >
+                        {runningWorkflowSlug === wf.slug ? 'Running...' : 'Run 3-Phase'}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            {/* Right 5 cols: Vetted Knowledge/Skills/Methodology Catalog */}
+            <div className="@[920px]:col-span-5 p-5 rounded-2xl glass-surface-2 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-cyan-300" />
+                  <h3 className="text-sm font-bold text-white">
+                    Vetted OS Knowledge &amp; Skills Catalog ({localOsDb.knowledgeCatalog.length})
+                  </h3>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-300">ALL VETTED</span>
+              </div>
+
+              <div className="divide-y divide-white/10 border border-white/10 rounded-xl max-h-80 overflow-y-auto bg-black/25">
+                {localOsDb.knowledgeCatalog.map((item: OsKnowledgeCatalogEntry) => (
+                  <div key={item.id} className="px-3 py-2 text-[11px] font-mono space-y-0.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-cyan-300 font-semibold truncate">{item.path}</span>
+                      <span className="text-slate-400 shrink-0">{item.category}</span>
+                    </div>
+                    <div className="text-slate-400 flex items-center justify-between text-[10px]">
+                      <span>{item.bytes} bytes</span>
+                      <span>sha256:{item.sha256.slice(0, 12)}…</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TAB 1: 5-Plane Substrate, 4 Operational Barriers, & Visual Schematics */}
       {subTab === 'planes' && (
