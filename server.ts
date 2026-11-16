@@ -65,6 +65,11 @@ import {
   verifyEd25519Receipt,
   verifyReceiptWithKeyring,
 } from './src/utils/serverControlPlane.ts';
+import { createServerOsDatabaseEngine } from './src/utils/serverOsDatabase.ts';
+import {
+  createDeploymentOrchestrator,
+  verifyHonoCloudflareServiceLink,
+} from './src/utils/deploymentOrchestrator.ts';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -377,32 +382,7 @@ I have generated the requested full-stack application structure with responsive 
 You can preview the live app in the right pane or edit any source file.`;
 }
 
-// 4. One-click Deployment Simulation Endpoint
-app.post('/api/deploy', (req: Request, res: Response) => {
-  const { projectName = 'codex-app', files = [] } = req.body;
-  const deploymentId = 'dep_' + Math.random().toString(36).substring(2, 9);
-  const domain = `${projectName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${deploymentId.slice(4)}.app.live`;
-
-  res.json({
-    success: true,
-    deploymentId,
-    domain,
-    url: `https://${domain}`,
-    createdAt: new Date().toISOString(),
-    status: 'ACTIVE',
-    security: {
-      encryptionAtRest: 'AES-256-GCM',
-      sslStatus: 'TLS 1.3 Active',
-      mfaEnforced: true,
-      ddosProtection: 'Cloud Armor Edge L7',
-    },
-    metrics: {
-      bundleSize: '34.2 KB',
-      edgeLatency: '18ms',
-      regions: ['us-west2', 'us-east1', 'eu-west1'],
-    },
-  });
-});
+// 4. Deployment orchestration is enforced below via Control Plane Ed25519 & Hono/Cloudflare service checks (/api/deploy, /api/deploy/preflight, /api/cloudflare/deploy).
 
 // 5. Audio Transcription endpoint
 app.post('/api/ai/transcribe', async (req: Request, res: Response) => {
@@ -706,10 +686,15 @@ app.get('/api/sandbox/metrics', (_req: Request, res: Response) => {
 });
 
 app.get('/api/hono/health', (_req: Request, res: Response) => {
+  const cpState = serverControlPlane.getPublicState();
   res.json({
-    status: 'ok',
+    status: cpState.state.mode === 'ACTIVE' ? 'ok' : 'degraded',
     honoVersion: '4.6.0',
     runtime: 'Cloudflare Workers / Node.js Sandbox',
+    controlPlaneMode: cpState.state.mode,
+    activeKeyId: cpState.state.activeKeyId,
+    serviceToServiceBridge: 'CONNECTED',
+    honoPort: 8787,
     bindings: {
       d1: 'DB_PROD (d1-a9f83-4921-b0e2-88231) [CONNECTED]',
       kv: 'CACHE_KV (kv-cache-8823-prod) [CONNECTED]',
@@ -2357,6 +2342,299 @@ app.post('/api/control-plane/attest', (req: Request, res: Response) => {
   });
 
   return res.status(result.status).json(result);
+});
+
+// ==================== LIQUID CHROME OS DATABASE & PLUG-AND-PLAY WIRE-IN ====================
+const serverOsDb = createServerOsDatabaseEngine({
+  controlPlane: serverControlPlane,
+  stateDir: CONTROL_PLANE_STATE_DIR,
+  rootDir: process.cwd(),
+});
+
+app.get('/api/os/state', (_req: Request, res: Response) => {
+  return res.json(serverOsDb.getSnapshot());
+});
+
+app.post('/api/os/db/query', (req: Request, res: Response) => {
+  const sql = typeof req.body?.sql === 'string' ? req.body.sql : '';
+  if (!sql.trim()) {
+    return res.status(400).json({ allowed: false, error: 'SQL query string is required.' });
+  }
+  const result = serverOsDb.querySql(sql);
+  const appended = appendSubstrateLedger(substrateLedger, 'os_db_query', 'Vault Query', {
+    table: result.table,
+    allowed: result.allowed,
+    rowCount: result.rowCount,
+  });
+  substrateLedger = appended.ledger;
+
+  return res.status(result.allowed ? 200 : 400).json({
+    ...result,
+    ledgerEntry: appended.entry,
+    ledgerIntegrity: verifySubstrateLedger(substrateLedger),
+  });
+});
+
+app.post('/api/os/wire', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/os/wire');
+  if (!claims) return;
+
+  const {
+    permitId,
+    projectId,
+    projectName,
+    files,
+    buildProfile,
+    hardwareSelection,
+    expectedEpoch,
+    expectedFencingVersion,
+    workspaceId,
+  } = req.body || {};
+
+  const outcome = serverOsDb.wireAppToOs({
+    permitId: typeof permitId === 'string' ? permitId : null,
+    projectId: typeof projectId === 'string' ? projectId : '',
+    projectName: typeof projectName === 'string' ? projectName : '',
+    files: Array.isArray(files) ? files : [],
+    buildProfile,
+    hardwareSelection,
+    expectedEpoch: typeof expectedEpoch === 'number' ? expectedEpoch : undefined,
+    expectedFencingVersion:
+      typeof expectedFencingVersion === 'number' ? expectedFencingVersion : undefined,
+    workspaceId: typeof workspaceId === 'string' ? workspaceId : claims.workspaceId,
+    actor: claims.actor,
+  });
+
+  if (outcome.ok) {
+    const appended = appendSubstrateLedger(substrateLedger, 'os_app_wire', 'Composite', {
+      bindingId: outcome.binding.bindingId,
+      projectId: outcome.binding.projectId,
+      buildProfile: outcome.binding.buildProfile,
+      receiptId: outcome.receipt.receiptId,
+    });
+    substrateLedger = appended.ledger;
+  }
+
+  return res.status(outcome.status).json(outcome);
+});
+
+app.post('/api/os/hardware', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/os/hardware');
+  if (!claims) return;
+
+  const {
+    permitId,
+    hardwareSelection,
+    buildProfile,
+    expectedEpoch,
+    expectedFencingVersion,
+    workspaceId,
+  } = req.body || {};
+
+  const outcome = serverOsDb.swapHardwareModule({
+    permitId: typeof permitId === 'string' ? permitId : null,
+    hardwareSelection: hardwareSelection && typeof hardwareSelection === 'object' ? hardwareSelection : {},
+    buildProfile,
+    expectedEpoch: typeof expectedEpoch === 'number' ? expectedEpoch : undefined,
+    expectedFencingVersion:
+      typeof expectedFencingVersion === 'number' ? expectedFencingVersion : undefined,
+    workspaceId: typeof workspaceId === 'string' ? workspaceId : claims.workspaceId,
+    actor: claims.actor,
+  });
+
+  return res.status(outcome.status).json(outcome);
+});
+
+app.post('/api/os/workflow/run', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/os/workflow/run');
+  if (!claims) return;
+
+  const {
+    permitId,
+    workflowSlugOrId,
+    targetProjectId,
+    expectedEpoch,
+    expectedFencingVersion,
+    workspaceId,
+  } = req.body || {};
+
+  const outcome = serverOsDb.runCodexFlowWorkflow({
+    permitId: typeof permitId === 'string' ? permitId : null,
+    workflowSlugOrId: workflowSlugOrId ?? '',
+    targetProjectId: typeof targetProjectId === 'string' ? targetProjectId : undefined,
+    expectedEpoch: typeof expectedEpoch === 'number' ? expectedEpoch : undefined,
+    expectedFencingVersion:
+      typeof expectedFencingVersion === 'number' ? expectedFencingVersion : undefined,
+    workspaceId: typeof workspaceId === 'string' ? workspaceId : claims.workspaceId,
+    actor: claims.actor,
+  });
+
+  return res.status(outcome.status).json(outcome);
+});
+
+// ==================== DEPLOYMENT ORCHESTRATION (HONO / CLOUDFLARE + ED25519 CONTROL PLANE) ====================
+const deploymentOrchestrator = createDeploymentOrchestrator({
+  controlPlane: serverControlPlane,
+  stateDir: CONTROL_PLANE_STATE_DIR,
+});
+
+app.post('/api/hono/service-check', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/hono/service-check');
+  if (!claims) return;
+
+  const {
+    projectName = 'liquidos-hono-app',
+    channel = 'cloudflare',
+    files = [],
+    cloudflareBindings,
+    cloudflareConfig,
+  } = req.body || {};
+
+  const report = verifyHonoCloudflareServiceLink({
+    channel,
+    projectName: typeof projectName === 'string' ? projectName : 'liquidos-hono-app',
+    files: Array.isArray(files) ? files : [],
+    cloudflareBindings,
+    cloudflareConfig,
+  });
+
+  return res.status(report.ok ? 200 : 502).json({
+    ...report,
+    controlPlane: serverControlPlane.getPublicState().state,
+  });
+});
+
+app.post('/api/deploy/preflight', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/deploy/preflight');
+  if (!claims) return;
+
+  const {
+    permitId,
+    projectName = 'codex-app',
+    channel = 'edge',
+    files = [],
+    cloudflareBindings,
+    cloudflareConfig,
+    expectedEpoch,
+    expectedFencingVersion,
+    workspaceId,
+  } = req.body || {};
+
+  const preflight = deploymentOrchestrator.runPreflight({
+    permitId: typeof permitId === 'string' ? permitId : null,
+    projectName: typeof projectName === 'string' ? projectName : 'codex-app',
+    channel,
+    files: Array.isArray(files) ? files : [],
+    cloudflareBindings,
+    cloudflareConfig,
+    expectedEpoch: typeof expectedEpoch === 'number' ? expectedEpoch : undefined,
+    expectedFencingVersion:
+      typeof expectedFencingVersion === 'number' ? expectedFencingVersion : undefined,
+    workspaceId: typeof workspaceId === 'string' ? workspaceId : claims.workspaceId,
+    actor: claims.actor,
+  });
+
+  return res.status(preflight.status).json(preflight);
+});
+
+app.post('/api/deploy', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/deploy');
+  if (!claims) return;
+
+  const {
+    permitId,
+    projectName = 'codex-app',
+    channel = 'edge',
+    files = [],
+    cloudflareBindings,
+    cloudflareConfig,
+    gensparkSubdomain,
+    suppliedReceipt,
+    expectedEpoch,
+    expectedFencingVersion,
+    workspaceId,
+  } = req.body || {};
+
+  const outcome = deploymentOrchestrator.shipVerifiedDeployment({
+    permitId: typeof permitId === 'string' ? permitId : null,
+    projectName: typeof projectName === 'string' ? projectName : 'codex-app',
+    channel,
+    files: Array.isArray(files) ? files : [],
+    cloudflareBindings,
+    cloudflareConfig,
+    gensparkSubdomain: typeof gensparkSubdomain === 'string' ? gensparkSubdomain : undefined,
+    suppliedReceipt: suppliedReceipt && typeof suppliedReceipt === 'object' ? suppliedReceipt : null,
+    expectedEpoch: typeof expectedEpoch === 'number' ? expectedEpoch : undefined,
+    expectedFencingVersion:
+      typeof expectedFencingVersion === 'number' ? expectedFencingVersion : undefined,
+    workspaceId: typeof workspaceId === 'string' ? workspaceId : claims.workspaceId,
+    actor: claims.actor,
+  });
+
+  if (outcome.ok) {
+    const appended = appendSubstrateLedger(substrateLedger, 'deployment_shipped', 'Composite', {
+      deploymentId: outcome.deploymentId,
+      channel: outcome.channel,
+      receiptId: outcome.ed25519Verification.receiptId,
+      keyId: outcome.ed25519Verification.keyId,
+    });
+    substrateLedger = appended.ledger;
+  }
+
+  return res.status(outcome.httpStatus).json(outcome);
+});
+
+app.post('/api/cloudflare/deploy', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/cloudflare/deploy');
+  if (!claims) return;
+
+  const {
+    permitId,
+    projectName = 'liquidos-hono-app',
+    channel = 'cloudflare',
+    files = [],
+    cloudflareBindings,
+    cloudflareConfig,
+    gensparkSubdomain,
+    suppliedReceipt,
+    expectedEpoch,
+    expectedFencingVersion,
+    workspaceId,
+  } = req.body || {};
+
+  const outcome = deploymentOrchestrator.shipVerifiedDeployment({
+    permitId: typeof permitId === 'string' ? permitId : null,
+    projectName: typeof projectName === 'string' ? projectName : 'liquidos-hono-app',
+    channel: channel === 'genspark' ? 'genspark' : 'cloudflare',
+    files: Array.isArray(files) ? files : [],
+    cloudflareBindings,
+    cloudflareConfig,
+    gensparkSubdomain: typeof gensparkSubdomain === 'string' ? gensparkSubdomain : undefined,
+    suppliedReceipt: suppliedReceipt && typeof suppliedReceipt === 'object' ? suppliedReceipt : null,
+    expectedEpoch: typeof expectedEpoch === 'number' ? expectedEpoch : undefined,
+    expectedFencingVersion:
+      typeof expectedFencingVersion === 'number' ? expectedFencingVersion : undefined,
+    workspaceId: typeof workspaceId === 'string' ? workspaceId : claims.workspaceId,
+    actor: claims.actor,
+  });
+
+  if (outcome.ok) {
+    const appended = appendSubstrateLedger(substrateLedger, 'cloudflare_shipped', 'Composite', {
+      deploymentId: outcome.deploymentId,
+      channel: outcome.channel,
+      workerName: outcome.serviceToService.workerName,
+      receiptId: outcome.ed25519Verification.receiptId,
+    });
+    substrateLedger = appended.ledger;
+  }
+
+  return res.status(outcome.httpStatus).json(outcome);
+});
+
+app.get('/api/deploy/history', (_req: Request, res: Response) => {
+  return res.json({
+    deployments: deploymentOrchestrator.getHistory(),
+  });
 });
 
 // Health check

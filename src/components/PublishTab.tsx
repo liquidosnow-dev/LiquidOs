@@ -25,14 +25,41 @@ import {
   Key,
   FolderGit2,
   Smartphone,
+  Shield,
+  XCircle,
+  RefreshCw,
 } from 'lucide-react';
+import type { ControlPlaneState } from '../utils/ingestionControlPlane';
 import { PlayStoreAuditView } from './PlayStoreAuditView';
+
+export interface PublishServiceDiagnostic {
+  service: string;
+  target: string;
+  ok: boolean;
+  code: string;
+  detail: string;
+}
+
+export interface PublishDeployStatus {
+  ok: boolean;
+  message: string;
+  receiptId?: string;
+  keyId?: string;
+  clientVerified?: boolean;
+  treeDigest?: string;
+  bindingsDigest?: string;
+  checks?: PublishServiceDiagnostic[];
+}
 
 interface PublishTabProps {
   gensparkConfig: GensparkSiteConfig;
   cloudflareConfig: CloudflareAccountConfig;
   githubConfig: GitHubRepoConfig;
   bindings: CloudflareBindings;
+  controlPlaneState?: ControlPlaneState;
+  publishStatus?: PublishDeployStatus | null;
+  isDeploying?: boolean;
+  onVerifyServiceLink?: () => Promise<void>;
   onDeployGenspark: () => void;
   onDeployCloudflare: () => void;
   onPushGithub: () => void;
@@ -46,6 +73,10 @@ export const PublishTab: React.FC<PublishTabProps> = ({
   cloudflareConfig,
   githubConfig,
   bindings,
+  controlPlaneState,
+  publishStatus,
+  isDeploying = false,
+  onVerifyServiceLink,
   onDeployGenspark,
   onDeployCloudflare,
   onPushGithub,
@@ -88,11 +119,80 @@ export const PublishTab: React.FC<PublishTabProps> = ({
   return (
     <div className="@container flex flex-col h-full bg-slate-950 text-slate-200 overflow-y-auto p-4 @[640px]:p-6 space-y-6">
       {/* Top Header */}
-      <div className="pb-4 border-b border-slate-800">
-        <h2 className="text-lg font-bold text-white">Publish & Deployment Channels</h2>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Deploy your Hono full-stack app, configure custom domains, edge storage, or sync to GitHub
-        </p>
+      <div className="pb-4 border-b border-slate-800 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-white">Publish &amp; Deployment Channels</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Deploy your Hono full-stack app with D1/KV/R2 service-to-service checks &amp; Ed25519 Control Plane attestation
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-cyan-300 flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Control Plane: {controlPlaneState?.mode || 'ACTIVE'}</span>
+            </span>
+            {onVerifyServiceLink && (
+              <button
+                type="button"
+                onClick={onVerifyServiceLink}
+                disabled={isDeploying}
+                className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-cyan-300 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isDeploying ? 'animate-spin' : ''}`} />
+                <span>Verify Hono/CF &amp; Ed25519</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {publishStatus && (
+          <div
+            className={`p-3 rounded-xl border text-xs font-mono space-y-2 ${
+              publishStatus.ok
+                ? 'bg-emerald-950/35 border-emerald-500/40 text-emerald-200'
+                : 'bg-rose-950/35 border-rose-500/40 text-rose-200'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                {publishStatus.ok ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                )}
+                <span>{publishStatus.message}</span>
+              </div>
+              {publishStatus.clientVerified && (
+                <span className="px-2 py-0.5 rounded bg-emerald-900/70 border border-emerald-500/40 text-emerald-300 text-[10px]">
+                  CLIENT WEBCRYPTO ED25519 VERIFIED
+                </span>
+              )}
+            </div>
+            {(publishStatus.treeDigest || publishStatus.bindingsDigest) && (
+              <div className="text-[10px] text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+                {publishStatus.treeDigest && (
+                  <span>treeDigest: {publishStatus.treeDigest.slice(0, 18)}…</span>
+                )}
+                {publishStatus.bindingsDigest && (
+                  <span>bindingsDigest: {publishStatus.bindingsDigest.slice(0, 18)}…</span>
+                )}
+              </div>
+            )}
+            {Array.isArray(publishStatus.checks) && publishStatus.checks.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                {publishStatus.checks.map((chk) => (
+                  <div key={chk.service} className="px-2 py-1 rounded bg-black/40 border border-white/10 flex items-center justify-between gap-2">
+                    <span className={chk.ok ? 'text-emerald-300' : 'text-rose-300'}>
+                      {chk.ok ? 'PASS' : 'FAIL'} · {chk.service}
+                    </span>
+                    <span className="text-slate-400 truncate">{chk.code}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Channel Switcher */}

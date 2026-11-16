@@ -1,0 +1,918 @@
+{
+  "specVersion": "LiquidChromeOS-v1.0-AN-EVC-001",
+  "manifestTotalRepos": 297,
+  "activeBuildProfile": "full",
+  "hardwareSelection": {
+    "kernelGeneration": "6.6-upstream",
+    "toolchain": "llvm-clang",
+    "architecture": "x86_64",
+    "boardOverlay": "src/overlays/board-overlays/amd64-generic",
+    "securityChip": "cr50",
+    "ecFirmware": "zephyr",
+    "bootloader": "depthcharge",
+    "hypervisor": "crosvm"
+  },
+  "layers": [
+    {
+      "layerIndex": 1,
+      "layerName": "Team Orchestration",
+      "primaryComponent": "LoopForge SOPs",
+      "phase": "Intention Registration",
+      "responsibility": "Manages multi-repository repo synchronization, automated package builds, and fleet-wide deployment pipelines.",
+      "substratePath": "SOPs/"
+    },
+    {
+      "layerIndex": 2,
+      "layerName": "Agent ↔ User Protocol",
+      "primaryComponent": "AG-UI",
+      "phase": "Intention Registration",
+      "responsibility": "Provides structured user-to-agent interface protocols, surfacing system telemetry and interactive status outputs.",
+      "substratePath": "src/components/ChatStream.tsx"
+    },
+    {
+      "layerIndex": 3,
+      "layerName": "Human-in-the-Loop",
+      "primaryComponent": "Plannotator",
+      "phase": "Intention Registration",
+      "responsibility": "Interfaces design proposals, architectural modifications, and board overlay patches for explicit human sign-off prior to execution.",
+      "substratePath": "src/engine/recursiveEngine.ts"
+    },
+    {
+      "layerIndex": 4,
+      "layerName": "Live Verification",
+      "primaryComponent": "Chrome DevTools + BrowserAct",
+      "phase": "Domain Execution & Runtime",
+      "responsibility": "Executes automated end-to-end browser testing, UI inspection, and live functional verification across system components.",
+      "substratePath": "Skills/browseract/"
+    },
+    {
+      "layerIndex": 5,
+      "layerName": "Local / Private Runtime",
+      "primaryComponent": "ggml / llama.cpp",
+      "phase": "Domain Execution & Runtime",
+      "responsibility": "Host-level sovereign LLM execution environment running directly on kernel resources without cloud API dependencies.",
+      "substratePath": "dark_gpt/"
+    },
+    {
+      "layerIndex": 6,
+      "layerName": "Methodology & Guardrails",
+      "primaryComponent": "Superpowers + Karpathy Guidelines",
+      "phase": "Methodological Verification",
+      "responsibility": "Enforces strict development contracts: intent clarification, surgical changes, test-driven subagents, and goal-driven execution.",
+      "substratePath": "Methodology/"
+    },
+    {
+      "layerIndex": 7,
+      "layerName": "Evaluation & Reliability",
+      "primaryComponent": "NVIDIA SkillEvaluator",
+      "phase": "Methodological Verification",
+      "responsibility": "Evaluates new domain skills, automation scripts, and ebuild updates against performance and safety benchmarks before adoption.",
+      "substratePath": "vitest.config.ts"
+    },
+    {
+      "layerIndex": 8,
+      "layerName": "Domain Skills Engine",
+      "primaryComponent": "Skills/ Directory",
+      "phase": "Domain Execution & Runtime",
+      "responsibility": "Houses modular execution skills (browseract, selfhosted-audit, selfhosted-scaffold, selfhosted-discover).",
+      "substratePath": "Skills/"
+    },
+    {
+      "layerIndex": 9,
+      "layerName": "Knowledge Layer Catalogs",
+      "primaryComponent": "Knowledge/ Directory",
+      "phase": "Domain Execution & Runtime",
+      "responsibility": "Provides structured catalogs (selfhosted, python, scalability, flutter, openclaw-skills, unwind-ai) for system grounding.",
+      "substratePath": "Knowledge/"
+    },
+    {
+      "layerIndex": 10,
+      "layerName": "Cryptographic Core",
+      "primaryComponent": "an_nexus",
+      "phase": "Cryptographic Attestation",
+      "responsibility": "Root of trust executing Ed25519 signatures, fail-closed NexusBridge checks, and immutable audit ledger logging.",
+      "substratePath": "an_nexus/"
+    }
+  ],
+  "buildProfiles": [
+    {
+      "id": "minilayout",
+      "name": "Minilayout Workspace",
+      "repoCount": 23,
+      "includedComponents": [
+        "chromite",
+        "repohooks",
+        "crosutils",
+        "depot_tools",
+        "core platform libraries"
+      ],
+      "workflowFocus": "Essential workspace layout for general system utility development and manifest maintenance."
+    },
+    {
+      "id": "firmware",
+      "name": "Firmware & Security Profile",
+      "repoCount": 69,
+      "includedComponents": [
+        "depthcharge",
+        "ec",
+        "cr50",
+        "ti50",
+        "zephyr",
+        "coreboot",
+        "board overlays"
+      ],
+      "workflowFocus": "Low-level firmware engineering, hardware security chip development, and EC driver coding."
+    },
+    {
+      "id": "crosvm",
+      "name": "Crosvm Hypervisor Profile",
+      "repoCount": 10,
+      "includedComponents": [
+        "crosvm",
+        "borealis-vm",
+        "container-guest-tools",
+        "platform2 VMM daemons"
+      ],
+      "workflowFocus": "Hypervisor customization, Linux container integration, and guest VM performance tuning."
+    },
+    {
+      "id": "bazel",
+      "name": "Bazel Build & Toolchain",
+      "repoCount": 7,
+      "includedComponents": [
+        "bazel_deps/*",
+        "src/bazel",
+        "rules_cc",
+        "rules_rust",
+        "rules_pkg"
+      ],
+      "workflowFocus": "Build system maintenance, Bazel rule optimization, and dependency graph verification."
+    },
+    {
+      "id": "full",
+      "name": "Full Liquid Chrome OS Matrix",
+      "repoCount": 297,
+      "includedComponents": [
+        "_kernel_upstream.xml",
+        "_toolchain.xml",
+        "aosp (28 projects)",
+        "third_party (130 repos)",
+        "chromium",
+        "platform & platform2",
+        "an_nexus"
+      ],
+      "workflowFocus": "Complete 297-repository sovereign OS distribution with 10-layer verification stack."
+    }
+  ],
+  "manifestMappings": [
+    {
+      "sourcePath": "chromite/AUTHORS",
+      "targetPath": "AUTHORS",
+      "operation": "copyfile",
+      "purpose": "Copies root authorship metadata to top-level workspace."
+    },
+    {
+      "sourcePath": "chromite/LICENSE",
+      "targetPath": "LICENSE",
+      "operation": "copyfile",
+      "purpose": "Copies master open-source licensing terms to workspace root."
+    },
+    {
+      "sourcePath": "src/bazel/workspace_root/general/WORKSPACE",
+      "targetPath": "src/WORKSPACE",
+      "operation": "linkfile",
+      "purpose": "Links central Bazel build workspace file to the src/ directory."
+    }
+  ],
+  "manifestRepos": [
+    {
+      "name": "chromiumos/chromite",
+      "path": "chromite",
+      "group": "minilayout",
+      "subsystem": "Build & Admin Tools",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/repohooks",
+      "path": "src/repohooks",
+      "group": "minilayout",
+      "subsystem": "Pre-Upload Hooks",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/scripts",
+      "path": "src/scripts",
+      "group": "minilayout",
+      "subsystem": "crosutils Build Scripts",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromium/tools/depot_tools",
+      "path": "src/chromium/depot_tools",
+      "group": "minilayout",
+      "subsystem": "Developer Toolset",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/platform/cr50",
+      "path": "src/platform/cr50",
+      "group": "firmware",
+      "subsystem": "Google Security Chip (cr50_stab)",
+      "revisionPin": "cr50_stab",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/platform/ti50",
+      "path": "src/platform/ti50",
+      "group": "firmware",
+      "subsystem": "Google Security Chip (ti50)",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/platform/depthcharge",
+      "path": "src/platform/depthcharge",
+      "group": "firmware",
+      "subsystem": "Bootloader Payload",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/platform/ec",
+      "path": "src/platform/ec",
+      "group": "firmware",
+      "subsystem": "Embedded Controller",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/third_party/zephyr",
+      "path": "src/third_party/zephyr",
+      "group": "firmware",
+      "subsystem": "Zephyr RTOS EC Firmware",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "third_party"
+    },
+    {
+      "name": "chromiumos/third_party/coreboot",
+      "path": "src/third_party/coreboot",
+      "group": "firmware",
+      "subsystem": "System Firmware Engine",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "third_party"
+    },
+    {
+      "name": "chromiumos/overlays/board-overlays",
+      "path": "src/overlays",
+      "group": "firmware",
+      "subsystem": "Board Overlays & Ebuilds",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/platform/crosvm",
+      "path": "src/platform/crosvm",
+      "group": "crosvm",
+      "subsystem": "VMM Hypervisor",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/platform/borealis-vm",
+      "path": "src/platform/borealis-vm",
+      "group": "crosvm",
+      "subsystem": "Gaming VM Runtime",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/platform/container-guest-tools",
+      "path": "src/platform/container-guest-tools",
+      "group": "crosvm",
+      "subsystem": "Crostini Linux Guest Tools",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "chromiumos/platform2",
+      "path": "src/platform2",
+      "group": "platform",
+      "subsystem": "Core Platform Daemons",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "bazel/central-registry",
+      "path": "bazel_deps/bazel-central-registry",
+      "group": "bazel",
+      "subsystem": "Bazel Central Registry",
+      "revisionPin": "bcr-pin",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "bazel/rules_cc",
+      "path": "bazel_deps/rules_cc",
+      "group": "bazel",
+      "subsystem": "C++ Build Rules",
+      "revisionPin": "bcr-pin",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "bazel/rules_rust",
+      "path": "bazel_deps/rules_rust",
+      "group": "bazel",
+      "subsystem": "Rust Build Rules",
+      "revisionPin": "bcr-pin",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "bazel/rules_pkg",
+      "path": "bazel_deps/rules_pkg",
+      "group": "bazel",
+      "subsystem": "Packaging Build Rules",
+      "revisionPin": "bcr-pin",
+      "sourceOrigin": "chromiumos-full.xml"
+    },
+    {
+      "name": "aosp/platform/hardware",
+      "path": "src/aosp/hardware",
+      "group": "aosp",
+      "subsystem": "AOSP HALs (28 projects)",
+      "revisionPin": "aosp-hal-pin",
+      "sourceOrigin": "aosp-hal"
+    },
+    {
+      "name": "chromiumos/third_party/mesa",
+      "path": "src/third_party/Mesa",
+      "group": "third_party",
+      "subsystem": "Graphics Stack (130 third_party repos)",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "third_party"
+    },
+    {
+      "name": "liquidos/an_nexus",
+      "path": "an_nexus",
+      "group": "platform",
+      "subsystem": "Zero-Trust Cryptographic Core",
+      "revisionPin": "an-evc-001",
+      "sourceOrigin": "liquidos-substrate"
+    },
+    {
+      "name": "liquidos/recursive-engine",
+      "path": "src/engine/recursiveEngine.ts",
+      "group": "platform",
+      "subsystem": "NexusBridge & Autonomous Loop Core",
+      "revisionPin": "an-evc-001",
+      "sourceOrigin": "liquidos-substrate"
+    },
+    {
+      "name": "liquidos/infra-pipelines",
+      "path": "infra",
+      "group": "infra",
+      "subsystem": "CI/CD, Autotest Drone, Observability",
+      "revisionPin": "cros-full-297",
+      "sourceOrigin": "chromiumos-full.xml"
+    }
+  ],
+  "workflows": [
+    {
+      "id": 1,
+      "slug": "recursive-self-mutation",
+      "category": "Runtime & Governance",
+      "action": "Generate AST/file diffs, run evaluation & Vitest, require Ed25519 d_attest before commit",
+      "substrate": "recursiveEngine.ts, nexusBridge.ts",
+      "policyRule": "IBM-PRAXIS-PPE-01",
+      "requiresAttestation": true
+    },
+    {
+      "id": 2,
+      "slug": "ast-sandbox-execution",
+      "category": "Runtime & Governance",
+      "action": "Parse generated code into AST and execute in isolated sandbox",
+      "substrate": "toolExecutor.ts",
+      "policyRule": "IBM-PRAXIS-PPE-02",
+      "requiresAttestation": true
+    },
+    {
+      "id": 3,
+      "slug": "multi-model-peer-review",
+      "category": "Runtime & Governance",
+      "action": "Route proposed diff to secondary model for security review before Praxis PPE gate",
+      "substrate": "freeLlmClient.ts, nexusBridge.ts",
+      "policyRule": "IBM-PRAXIS-PPE-03",
+      "requiresAttestation": true
+    },
+    {
+      "id": 4,
+      "slug": "rollback-on-invariant-violation",
+      "category": "Runtime & Governance",
+      "action": "Trigger automatic checkpoint rollback if verification suite reports errors",
+      "substrate": "versionControl.ts",
+      "policyRule": "IBM-PRAXIS-PPE-04",
+      "requiresAttestation": true
+    },
+    {
+      "id": 5,
+      "slug": "dependency-graph-pruning",
+      "category": "Runtime & Governance",
+      "action": "Analyze dependency graph and CVE surface before pruning unused packages",
+      "substrate": "toolExecutor.ts, nexusBridge.ts",
+      "policyRule": "IBM-PRAXIS-PPE-05",
+      "requiresAttestation": true
+    },
+    {
+      "id": 6,
+      "slug": "edge-key-rotation",
+      "category": "Assurance & Evidence",
+      "action": "Rotate Ed25519 signing identity and emit dual-signed continuity transition record",
+      "substrate": "an_nexus/keystore.py, serverControlPlane.ts",
+      "policyRule": "AN-EVC-KEY-06",
+      "requiresAttestation": true
+    },
+    {
+      "id": 7,
+      "slug": "signed-audit-log-sync",
+      "category": "Assurance & Evidence",
+      "action": "Flush pending local telemetry sealed with a signed receipt",
+      "substrate": "sentimentStore.ts, nexusBridge.ts",
+      "policyRule": "AN-EVC-LOG-07",
+      "requiresAttestation": true
+    },
+    {
+      "id": 8,
+      "slug": "continuity-anchor-rollup",
+      "category": "Assurance & Evidence",
+      "action": "Roll up audit ledger tip into signed Merkle checkpoint",
+      "substrate": "an_nexus/continuity.py",
+      "policyRule": "AN-EVC-ANCHOR-08",
+      "requiresAttestation": true
+    },
+    {
+      "id": 9,
+      "slug": "policy-ppe-violation-alert",
+      "category": "Assurance & Evidence",
+      "action": "Block unauthorized tool invocation at IBM Praxis PPE and log lockdown alert",
+      "substrate": "ingestionControlPlane.ts, CommandHUD.tsx",
+      "policyRule": "GLOBAL-MODE-001",
+      "requiresAttestation": true
+    },
+    {
+      "id": 10,
+      "slug": "hardware-enclave-attestation",
+      "category": "Assurance & Evidence",
+      "action": "Verify cr50/ti50 enclave signature against trust registry before state transfer",
+      "substrate": "an_nexus/assertions.py, access_state.py",
+      "policyRule": "TPM-CR50-ATTEST-10",
+      "requiresAttestation": true
+    },
+    {
+      "id": 11,
+      "slug": "live-html-to-vector-snapshot",
+      "category": "Sovereign Memory & Vector",
+      "action": "Extract active canvas text, chunk content, and index 1536-dim vectors",
+      "substrate": "snapshotPipeline.ts, vectorStore.ts",
+      "policyRule": "VAULT-VECTOR-11",
+      "requiresAttestation": true
+    },
+    {
+      "id": 12,
+      "slug": "vector-vault-l2-optimization",
+      "category": "Sovereign Memory & Vector",
+      "action": "Recalculate L2 distances across LanceDB embeddings and prune stale chunks",
+      "substrate": "vectorStore.ts, vaultAdapters.ts",
+      "policyRule": "VAULT-L2-12",
+      "requiresAttestation": true
+    },
+    {
+      "id": 13,
+      "slug": "cross-session-memory-transfer",
+      "category": "Sovereign Memory & Vector",
+      "action": "Authorize signed LanceDB snapshot transfer between workspace profiles",
+      "substrate": "an_nexus/access_state.py",
+      "policyRule": "VAULT-XFER-13",
+      "requiresAttestation": true
+    },
+    {
+      "id": 14,
+      "slug": "semantic-cache-invalidation",
+      "category": "Sovereign Memory & Vector",
+      "action": "Purge stale chunk_id entries when underlying workspace source files mutate",
+      "substrate": "vectorStore.ts, snapshotPipeline.ts",
+      "policyRule": "VAULT-CACHE-14",
+      "requiresAttestation": true
+    },
+    {
+      "id": 15,
+      "slug": "duckdb-analytical-export",
+      "category": "Sovereign Memory & Vector",
+      "action": "Run Rule S4 read-only analytical SQL aggregation over workspace & OS DB tables",
+      "substrate": "vaultAdapters.ts, liquidChromeOs.ts",
+      "policyRule": "RULE-S4-SQL-15",
+      "requiresAttestation": true
+    },
+    {
+      "id": 16,
+      "slug": "mcp-device-handshake",
+      "category": "Hardware & Interoperability",
+      "action": "Initiate MCP handshake and verify device SHA-256 fingerprint",
+      "substrate": "nexusBridge.ts, sovereignSubstrate.ts",
+      "policyRule": "MCP-HANDSHAKE-16",
+      "requiresAttestation": true
+    },
+    {
+      "id": 17,
+      "slug": "edge-inference-esp32-sync",
+      "category": "Hardware & Interoperability",
+      "action": "Sign quantized edge model payload before pushing to target hardware",
+      "substrate": "an_nexus/signing.py",
+      "policyRule": "EDGE-SIGN-17",
+      "requiresAttestation": true
+    },
+    {
+      "id": 18,
+      "slug": "actuator-command-escalation",
+      "category": "Hardware & Interoperability",
+      "action": "Require multi-sig authorization before unlocking physical hardware actuators",
+      "substrate": "an_nexus/signature.py",
+      "policyRule": "HW-MULTISIG-18",
+      "requiresAttestation": true
+    },
+    {
+      "id": 19,
+      "slug": "local-network-topology-discovery",
+      "category": "Hardware & Interoperability",
+      "action": "Record discovered local hardware endpoints into tamper-evident ledger",
+      "substrate": "an_nexus/audit_log.py",
+      "policyRule": "NET-DISCO-19",
+      "requiresAttestation": true
+    },
+    {
+      "id": 20,
+      "slug": "firmware-hash-verification",
+      "category": "Hardware & Interoperability",
+      "action": "Verify depthcharge/ec/cr50 firmware SHA-256 against manifest pins before update",
+      "substrate": "an_nexus/digests.py, manifest.py",
+      "policyRule": "FW-PIN-20",
+      "requiresAttestation": true
+    },
+    {
+      "id": 21,
+      "slug": "sentiment-telemetry-flush",
+      "category": "Experience & Telemetry",
+      "action": "Flush session telemetry cleanly on unload using beacon transport",
+      "substrate": "useAssistantSentiment.ts",
+      "policyRule": "TEL-FLUSH-21",
+      "requiresAttestation": true
+    },
+    {
+      "id": 22,
+      "slug": "hud-ledger-latency-probe",
+      "category": "Experience & Telemetry",
+      "action": "Poll audit log head and update HUD with latest cryptographic tip hash",
+      "substrate": "CommandHUD.tsx, nexusBridge.ts",
+      "policyRule": "HUD-PROBE-22",
+      "requiresAttestation": true
+    },
+    {
+      "id": 23,
+      "slug": "ui-state-machine-sync",
+      "category": "Experience & Telemetry",
+      "action": "Synchronize agent HUD execution states across workspace panels",
+      "substrate": "App.tsx, PreviewCanvas.tsx",
+      "policyRule": "UI-SYNC-23",
+      "requiresAttestation": true
+    },
+    {
+      "id": 24,
+      "slug": "zero-latency-hotkeys",
+      "category": "Experience & Telemetry",
+      "action": "Dispatch instant voice/composer trigger without event pooling lag",
+      "substrate": "App.tsx, ChatStream.tsx",
+      "policyRule": "UI-HOTKEY-24",
+      "requiresAttestation": true
+    },
+    {
+      "id": 25,
+      "slug": "global-mode-lockdown-broadcast",
+      "category": "Experience & Telemetry",
+      "action": "Abort in-flight sync/loops and enforce LOCKDOWN across connected surfaces",
+      "substrate": "App.tsx, ingestionControlPlane.ts",
+      "policyRule": "GLOBAL-MODE-001",
+      "requiresAttestation": true
+    }
+  ],
+  "knowledgeCatalog": [
+    {
+      "id": "knowledge_flutter",
+      "category": "Knowledge",
+      "title": "Knowledge: flutter",
+      "path": "Knowledge/flutter",
+      "bytes": 1024,
+      "sha256": "3b31159a440e2a0d38291f2db09ae16d30e6925929d84a992e297858aa83c997",
+      "vetted": true
+    },
+    {
+      "id": "knowledge_openclaw_skills",
+      "category": "Knowledge",
+      "title": "Knowledge: openclaw-skills",
+      "path": "Knowledge/openclaw-skills",
+      "bytes": 1024,
+      "sha256": "8cdaf056747d73057ff78e8de6afc2158366929e3a27ec0a2c76a7cecbe60615",
+      "vetted": true
+    },
+    {
+      "id": "knowledge_python",
+      "category": "Knowledge",
+      "title": "Knowledge: python",
+      "path": "Knowledge/python",
+      "bytes": 1024,
+      "sha256": "a47fae70d85fc6aaf6ea580ad8167c6a889e90ece702597eae446b8cb1043e50",
+      "vetted": true
+    },
+    {
+      "id": "knowledge_scalability",
+      "category": "Knowledge",
+      "title": "Knowledge: scalability",
+      "path": "Knowledge/scalability",
+      "bytes": 1024,
+      "sha256": "1c47f2df531ed4e7e69523c857057396844b1730e5bb7830b65218724eb0bbfb",
+      "vetted": true
+    },
+    {
+      "id": "knowledge_selfhosted",
+      "category": "Knowledge",
+      "title": "Knowledge: selfhosted",
+      "path": "Knowledge/selfhosted",
+      "bytes": 2048,
+      "sha256": "2b405d8fd14ce5f1cc6952d750c51e7d9381a32c00b51f68aa539a7f947fd7bd",
+      "vetted": true
+    },
+    {
+      "id": "knowledge_unwind_ai",
+      "category": "Knowledge",
+      "title": "Knowledge: unwind-ai",
+      "path": "Knowledge/unwind-ai",
+      "bytes": 1024,
+      "sha256": "8119eafcb0a5329ad0d78c6dbb6ee9bb5385e54fdd8390b21d3a829c7eead415",
+      "vetted": true
+    },
+    {
+      "id": "skills_browseract",
+      "category": "Skills",
+      "title": "Skills: browseract",
+      "path": "Skills/browseract",
+      "bytes": 1024,
+      "sha256": "56f2781cf5d5d7c20af72ba8331f0c660aa288dc0582bf63b1aede7abd853561",
+      "vetted": true
+    },
+    {
+      "id": "skills_karpathy_guidelines",
+      "category": "Skills",
+      "title": "Skills: karpathy-guidelines",
+      "path": "Skills/karpathy-guidelines",
+      "bytes": 1024,
+      "sha256": "54cb138e790c7883bef7d45520e83601428f89d2f5fafd7e9917dafd001d0cb6",
+      "vetted": true
+    },
+    {
+      "id": "skills_selfhosted_audit",
+      "category": "Skills",
+      "title": "Skills: selfhosted-audit",
+      "path": "Skills/selfhosted-audit",
+      "bytes": 1024,
+      "sha256": "0aa85a319277ec5fd2508b5a738c6f2edd4bf624b75c27d69ba80e9b55725f19",
+      "vetted": true
+    },
+    {
+      "id": "skills_selfhosted_discover",
+      "category": "Skills",
+      "title": "Skills: selfhosted-discover",
+      "path": "Skills/selfhosted-discover",
+      "bytes": 1024,
+      "sha256": "8b4b255a6de7467b5a3de46eb27b8c373a465b3cb7bda67f5d88e952067f3cef",
+      "vetted": true
+    },
+    {
+      "id": "skills_selfhosted_scaffold",
+      "category": "Skills",
+      "title": "Skills: selfhosted-scaffold",
+      "path": "Skills/selfhosted-scaffold",
+      "bytes": 1024,
+      "sha256": "6180c7483fcabbb9581c14d49021f24d10a9d4bb4fb7f1218c713f3b0fd6ae07",
+      "vetted": true
+    },
+    {
+      "id": "methodology_KARPATHY_md",
+      "category": "Methodology",
+      "title": "Methodology: KARPATHY.md",
+      "path": "Methodology/KARPATHY.md",
+      "bytes": 2179,
+      "sha256": "7c31ff122f7109140316ab4d08829ee27e27ebf57a2b541b639d69ce2d0b6ef2",
+      "vetted": true
+    },
+    {
+      "id": "methodology_LIQUIDOS_DEVELOPMENT_CONTRACT_md",
+      "category": "Methodology",
+      "title": "Methodology: LIQUIDOS_DEVELOPMENT_CONTRACT.md",
+      "path": "Methodology/LIQUIDOS_DEVELOPMENT_CONTRACT.md",
+      "bytes": 3224,
+      "sha256": "eae6fe006e1fa16324cdf1c1aa455819944b26451cd4cba9716ed6b7a519be47",
+      "vetted": true
+    },
+    {
+      "id": "methodology_SUPERPOWERS_md",
+      "category": "Methodology",
+      "title": "Methodology: SUPERPOWERS.md",
+      "path": "Methodology/SUPERPOWERS.md",
+      "bytes": 1493,
+      "sha256": "bc975524053a4a8f0e2ca81e9ea4489eee862e59f736f7e2a09e4dd02583d13c",
+      "vetted": true
+    },
+    {
+      "id": "sops_build_feature_md",
+      "category": "SOPs",
+      "title": "SOPs: build-feature.md",
+      "path": "SOPs/build-feature.md",
+      "bytes": 671,
+      "sha256": "5d59275e9540bb52ce33f8b6a5ae4361f818ee00005e749a7d297e089c8f99b1",
+      "vetted": true
+    },
+    {
+      "id": "sops_deploy_selfhosted_service_md",
+      "category": "SOPs",
+      "title": "SOPs: deploy-selfhosted-service.md",
+      "path": "SOPs/deploy-selfhosted-service.md",
+      "bytes": 1153,
+      "sha256": "ca2c3e8cc091dbb4659759778d451239e1ba4d08ef01e6a02384135ffe92c80a",
+      "vetted": true
+    },
+    {
+      "id": "docs_ARCHITECTURE_md",
+      "category": "Docs",
+      "title": "Docs: ARCHITECTURE.md",
+      "path": "docs/ARCHITECTURE.md",
+      "bytes": 5176,
+      "sha256": "4fde57f990ea9c242ec5a4b49dd69ae99a2aa1d2cc819e91eb76c6c6d78e3509",
+      "vetted": true
+    },
+    {
+      "id": "docs_CODEXFLOW_md",
+      "category": "Docs",
+      "title": "Docs: CODEXFLOW.md",
+      "path": "docs/CODEXFLOW.md",
+      "bytes": 6911,
+      "sha256": "29e85e12fd684814d10712f6fce5a3fd48d54e669b00f1efb5b64d05b16099be",
+      "vetted": true
+    },
+    {
+      "id": "docs_NEXUS_BRIDGE_md",
+      "category": "Docs",
+      "title": "Docs: NEXUS_BRIDGE.md",
+      "path": "docs/NEXUS_BRIDGE.md",
+      "bytes": 2645,
+      "sha256": "023b825c48fb8e515e25e350f6920599be952c59153e07d86d4b71a6e0702f4d",
+      "vetted": true
+    },
+    {
+      "id": "substrate___init___py",
+      "category": "Substrate",
+      "title": "Substrate: __init__.py",
+      "path": "an_nexus/__init__.py",
+      "bytes": 119,
+      "sha256": "1fac5005dd5f3e720544dbac8b7e509f2cfbaac0bd306c35cb463853d5daa4e5",
+      "vetted": true
+    },
+    {
+      "id": "substrate_access_state_py",
+      "category": "Substrate",
+      "title": "Substrate: access_state.py",
+      "path": "an_nexus/access_state.py",
+      "bytes": 6260,
+      "sha256": "3620215615af51f51dc27fdb98573a406884016e34f7121d9debd1c2664bf227",
+      "vetted": true
+    },
+    {
+      "id": "substrate_annex_py",
+      "category": "Substrate",
+      "title": "Substrate: annex.py",
+      "path": "an_nexus/annex.py",
+      "bytes": 2608,
+      "sha256": "9349950448fff0b93b43b726f86422c9d7ca2b267264a78013621b4bbb4d671f",
+      "vetted": true
+    },
+    {
+      "id": "substrate_assertions_py",
+      "category": "Substrate",
+      "title": "Substrate: assertions.py",
+      "path": "an_nexus/assertions.py",
+      "bytes": 5372,
+      "sha256": "ed48c8b4f9efd05216ec2b80a19c8755ded7567d2bf6d20cd9c2fc9834307d1a",
+      "vetted": true
+    },
+    {
+      "id": "substrate_audit_log_py",
+      "category": "Substrate",
+      "title": "Substrate: audit_log.py",
+      "path": "an_nexus/audit_log.py",
+      "bytes": 2530,
+      "sha256": "9d977c6024babdda02d62e5391d726c93404f48d4c29f59110b7a4ff1f603b3f",
+      "vetted": true
+    },
+    {
+      "id": "substrate_cli_py",
+      "category": "Substrate",
+      "title": "Substrate: cli.py",
+      "path": "an_nexus/cli.py",
+      "bytes": 1506,
+      "sha256": "19d62128c6f00310ebc7bfce729949a6e3564b85d852dbecf5479c179f6e1283",
+      "vetted": true
+    },
+    {
+      "id": "substrate_continuity_py",
+      "category": "Substrate",
+      "title": "Substrate: continuity.py",
+      "path": "an_nexus/continuity.py",
+      "bytes": 3494,
+      "sha256": "c7f71be8e1a1c9845021de58871700f1801d5e105c2a01db000142d9d7f4bf45",
+      "vetted": true
+    },
+    {
+      "id": "substrate_demo_py",
+      "category": "Substrate",
+      "title": "Substrate: demo.py",
+      "path": "an_nexus/demo.py",
+      "bytes": 7183,
+      "sha256": "7d6cd4b1f8c35a0f3942f583dbbdc07023ee8e5d6ef41b66aeab68310670b28c",
+      "vetted": true
+    },
+    {
+      "id": "substrate_digests_py",
+      "category": "Substrate",
+      "title": "Substrate: digests.py",
+      "path": "an_nexus/digests.py",
+      "bytes": 706,
+      "sha256": "b7505ee6a84225619f2f05ef3f1f84b21c6874c7e58bfc3e0d184759149b956f",
+      "vetted": true
+    },
+    {
+      "id": "substrate_jcs_py",
+      "category": "Substrate",
+      "title": "Substrate: jcs.py",
+      "path": "an_nexus/jcs.py",
+      "bytes": 2451,
+      "sha256": "ed0d37d16745723e5cf0530c115567f3a75ac22910742aa6dc3aa0f658be28e1",
+      "vetted": true
+    },
+    {
+      "id": "substrate_keystore_py",
+      "category": "Substrate",
+      "title": "Substrate: keystore.py",
+      "path": "an_nexus/keystore.py",
+      "bytes": 3687,
+      "sha256": "96d280eb8df2348bd136d771bb9e829e8306042afb544f264ca15dbd5afa93db",
+      "vetted": true
+    },
+    {
+      "id": "substrate_manifest_py",
+      "category": "Substrate",
+      "title": "Substrate: manifest.py",
+      "path": "an_nexus/manifest.py",
+      "bytes": 3394,
+      "sha256": "f4443042f4a71d06993115da63f9793dd0458dd83b70e3200d696946c9f45fd1",
+      "vetted": true
+    },
+    {
+      "id": "substrate_py_typed",
+      "category": "Substrate",
+      "title": "Substrate: py.typed",
+      "path": "an_nexus/py.typed",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "vetted": true
+    },
+    {
+      "id": "substrate_signing_py",
+      "category": "Substrate",
+      "title": "Substrate: signing.py",
+      "path": "an_nexus/signing.py",
+      "bytes": 1865,
+      "sha256": "88315268a2c9d44259588da4c2675354d6dcb5b51dca0102d0522d3ea5ac8eb4",
+      "vetted": true
+    },
+    {
+      "id": "substrate_smoke_py",
+      "category": "Substrate",
+      "title": "Substrate: smoke.py",
+      "path": "an_nexus/smoke.py",
+      "bytes": 2503,
+      "sha256": "ee5f9d074b66b208ff50db9a74a18e009c1209c4e316a5e03e5c5f793fac22dd",
+      "vetted": true
+    }
+  ],
+  "appBindings": [],
+  "updatedAt": 1794823230976
+}

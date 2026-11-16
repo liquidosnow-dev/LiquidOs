@@ -223,6 +223,76 @@ export const CONTROL_PLANE_AUTH_MATRIX: EndpointAuthRule[] = [
     rejectionStatuses: [400, 401, 403, 409],
     description: 'Issue signed Ed25519 attestation receipt for evaluated autonomous recursive engine cycles.',
   },
+  {
+    method: 'POST',
+    path: '/api/os/wire',
+    minRole: 'operator',
+    workspaceScoped: true,
+    csrfAndOriginProtected: true,
+    replayProtected: true,
+    rejectionStatuses: [400, 401, 403, 409],
+    description: 'Plug-and-play bind workspace app files & build profile into Liquid Chrome OS DB with Ed25519 receipt.',
+  },
+  {
+    method: 'POST',
+    path: '/api/os/hardware',
+    minRole: 'operator',
+    workspaceScoped: true,
+    csrfAndOriginProtected: true,
+    replayProtected: true,
+    rejectionStatuses: [400, 401, 403, 409],
+    description: 'Hot-swap modular OS hardware components (kernel, toolchain, cr50/ti50, ec/zephyr, bootloader) with Ed25519 receipt.',
+  },
+  {
+    method: 'POST',
+    path: '/api/os/workflow/run',
+    minRole: 'operator',
+    workspaceScoped: true,
+    csrfAndOriginProtected: true,
+    replayProtected: true,
+    rejectionStatuses: [400, 401, 403, 404, 409],
+    description: 'Execute CodexFlow workflow 3-phase pipeline (Policy First -> Test Second -> Attest Last).',
+  },
+  {
+    method: 'POST',
+    path: '/api/hono/service-check',
+    minRole: 'operator',
+    workspaceScoped: true,
+    csrfAndOriginProtected: true,
+    replayProtected: false,
+    rejectionStatuses: [400, 401, 403, 502],
+    description: 'Verify Hono <-> Cloudflare D1/KV/R2 service-to-service link and Control Plane Ed25519 readiness.',
+  },
+  {
+    method: 'POST',
+    path: '/api/deploy/preflight',
+    minRole: 'operator',
+    workspaceScoped: true,
+    csrfAndOriginProtected: true,
+    replayProtected: false,
+    rejectionStatuses: [400, 401, 403, 422, 502],
+    description: 'Run deployment preflight validating Hono/Cloudflare bindings, file paths, and Control Plane permit.',
+  },
+  {
+    method: 'POST',
+    path: '/api/deploy',
+    minRole: 'operator',
+    workspaceScoped: true,
+    csrfAndOriginProtected: true,
+    replayProtected: true,
+    rejectionStatuses: [400, 401, 403, 409, 422, 502],
+    description: 'Ship workspace bundle after Hono/Cloudflare service check and Control Plane Ed25519 receipt verification.',
+  },
+  {
+    method: 'POST',
+    path: '/api/cloudflare/deploy',
+    minRole: 'operator',
+    workspaceScoped: true,
+    csrfAndOriginProtected: true,
+    replayProtected: true,
+    rejectionStatuses: [400, 401, 403, 409, 422, 502],
+    description: 'Ship Hono app to Cloudflare Workers / Genspark Edge after D1/KV/R2 and Ed25519 verification.',
+  },
 ];
 
 export interface ControlPlaneSessionClaims {
@@ -1731,6 +1801,207 @@ export function createAuthoritativeControlPlaneEngine(options?: {
     };
   }
 
+  function issueAndVerifyDeploymentReceipt(params: {
+    permitId: string | null;
+    projectName: string;
+    channel: 'edge' | 'genspark' | 'cloudflare';
+    files: ProjectFile[];
+    bindingsDigest: string;
+    suppliedReceipt?: Partial<SignedServerReceipt> | null;
+    expectedEpoch?: number;
+    expectedFencingVersion?: number;
+    workspaceId?: string;
+    actor?: string;
+  }) {
+    if (!params.projectName || !params.projectName.trim()) {
+      return {
+        ok: false as const,
+        status: 400,
+        code: 'ERR_INVALID_PAYLOAD',
+        error: 'projectName is required for Control Plane deployment attestation.',
+        linearizationSeq: state.linearizationSeq ?? 0,
+      };
+    }
+
+    const files = Array.isArray(params.files) ? params.files : [];
+    for (const file of files) {
+      const pathCheck = validateIngestPath(file?.path);
+      if (!pathCheck.ok) {
+        return {
+          ok: false as const,
+          status: 400,
+          code: 'ERR_UNSAFE_PATH',
+          error: `Deployment rejected unsafe path "${file?.path}": ${pathCheck.reason}`,
+          linearizationSeq: state.linearizationSeq ?? 0,
+        };
+      }
+      if (typeof file.content !== 'string' || file.content.includes('\u0000')) {
+        return {
+          ok: false as const,
+          status: 400,
+          code: 'ERR_BINARY_PAYLOAD',
+          error: `Deployment rejected binary/NUL payload in "${file.path}".`,
+          linearizationSeq: state.linearizationSeq ?? 0,
+        };
+      }
+    }
+
+    const authRes = authorizeOperation({
+      permitId: params.permitId,
+      scope: 'workspace_commit',
+      clientEpoch: params.expectedEpoch,
+      clientFencingVersion: params.expectedFencingVersion,
+    });
+    if (!authRes.authorized) {
+      return {
+        ok: false as const,
+        status: 403,
+        code: authRes.check.code,
+        error: authRes.check.reason,
+        linearizationSeq: authRes.linearizationSeq,
+      };
+    }
+
+    const { fileHashes, treeDigest } = computeWorkspaceFileHashes(files);
+    const reqWorkspaceId = params.workspaceId || workspaceId;
+
+    let receiptToVerify: SignedServerReceipt;
+    if (params.suppliedReceipt) {
+      const candidate = params.suppliedReceipt;
+      if (
+        typeof candidate.keyId !== 'string' ||
+        typeof candidate.canonicalPayload !== 'string' ||
+        typeof candidate.signature !== 'string' ||
+        typeof candidate.receiptId !== 'string'
+      ) {
+        return {
+          ok: false as const,
+          status: 403,
+          code: 'ERR_INVALID_ED25519_RECEIPT',
+          error: 'Deployment rejected malformed Ed25519 Control Plane receipt.',
+          linearizationSeq: authRes.linearizationSeq,
+        };
+      }
+      const keyCheck = verifyReceiptWithKeyring(
+        {
+          keyId: candidate.keyId,
+          canonicalPayload: candidate.canonicalPayload,
+          signature: candidate.signature,
+          publicKeyPem: candidate.publicKeyPem,
+        },
+        publicKeysById
+      );
+      if (!keyCheck.valid) {
+        return {
+          ok: false as const,
+          status: 403,
+          code: 'ERR_INVALID_ED25519_SIGNATURE',
+          error: `Pre-ship Ed25519 signature validation failed: ${keyCheck.reason || 'signature mismatch'}.`,
+          linearizationSeq: authRes.linearizationSeq,
+        };
+      }
+      let parsedPayload: Record<string, unknown> | null = null;
+      try {
+        parsedPayload = JSON.parse(candidate.canonicalPayload);
+      } catch {
+        parsedPayload = null;
+      }
+      if (
+        !parsedPayload ||
+        parsedPayload.treeDigest !== treeDigest ||
+        parsedPayload.workspaceId !== reqWorkspaceId ||
+        (parsedPayload.bindingsDigest && parsedPayload.bindingsDigest !== params.bindingsDigest)
+      ) {
+        return {
+          ok: false as const,
+          status: 403,
+          code: 'ERR_RECEIPT_PAYLOAD_MISMATCH',
+          error: 'Pre-ship Ed25519 receipt payload does not match current deployment bundle digest or workspace.',
+          linearizationSeq: authRes.linearizationSeq,
+        };
+      }
+      receiptToVerify = {
+        receiptId: candidate.receiptId,
+        keyId: candidate.keyId,
+        action: typeof candidate.action === 'string' ? candidate.action : 'deployment_release_attestation',
+        canonicalPayload: candidate.canonicalPayload,
+        signature: candidate.signature,
+        publicKeyPem: publicKeysById[candidate.keyId] || publicKeyPem,
+        algorithm: 'Ed25519',
+        linearizationSeq:
+          typeof candidate.linearizationSeq === 'number'
+            ? candidate.linearizationSeq
+            : authRes.linearizationSeq,
+      };
+    } else {
+      const releasePayload = {
+        contract: 'AN-EVC-001',
+        action: 'deployment_release_attestation',
+        projectName: params.projectName,
+        channel: params.channel,
+        workspaceId: reqWorkspaceId,
+        permitId: params.permitId || null,
+        epoch: state.epoch,
+        fencingVersion: state.activePermit?.fencingVersion ?? state.minFencingVersion,
+        linearizationSeq: authRes.linearizationSeq,
+        treeDigest,
+        bindingsDigest: params.bindingsDigest,
+        fileCount: files.length,
+      };
+      receiptToVerify = signPayload('deployment_release_attestation', releasePayload);
+    }
+
+    // Mandatory pre-ship Ed25519 signature verification against Control Plane keyring
+    const verification = verifyReceiptWithKeyring(receiptToVerify, publicKeysById);
+    if (!verification.valid) {
+      return {
+        ok: false as const,
+        status: 403,
+        code: 'ERR_INVALID_ED25519_SIGNATURE',
+        error: `Control Plane pre-ship Ed25519 signature check failed: ${verification.reason || 'invalid signature'}.`,
+        linearizationSeq: authRes.linearizationSeq,
+      };
+    }
+
+    ledger = recordControlPlaneAudit(
+      ledger,
+      'deployment_ed25519_verified',
+      receiptToVerify.receiptId,
+      params.actor || 'human:mercy',
+      {
+        projectName: params.projectName,
+        channel: params.channel,
+        keyId: receiptToVerify.keyId,
+        treeDigest,
+        bindingsDigest: params.bindingsDigest,
+        fileCount: files.length,
+        linearizationSeq: authRes.linearizationSeq,
+      }
+    );
+    emitCheckpoint();
+    persistStateSnapshot();
+
+    return {
+      ok: true as const,
+      status: 200,
+      receipt: receiptToVerify,
+      ed25519Verification: {
+        verified: true,
+        algorithm: 'Ed25519' as const,
+        keyId: receiptToVerify.keyId,
+        receiptId: receiptToVerify.receiptId,
+        signaturePreview: receiptToVerify.signature.slice(0, 24) + '…',
+        linearizationSeq: authRes.linearizationSeq,
+      },
+      treeDigest,
+      fileHashes,
+      linearizationSeq: authRes.linearizationSeq,
+      activeKeyId,
+      publicKeyPem,
+      state: { ...state },
+    };
+  }
+
   return {
     issueSessionToken,
     verifySessionToken,
@@ -1745,6 +2016,7 @@ export function createAuthoritativeControlPlaneEngine(options?: {
     verifyUploadedFilesWatchMode,
     updateRecoveryQueue,
     issueExecutionAttestation,
+    issueAndVerifyDeploymentReceipt,
     getAuditSnapshot,
   };
 }

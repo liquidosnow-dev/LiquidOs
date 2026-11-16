@@ -1,0 +1,563 @@
+[
+  {
+    "deploymentId": "dep_6cac6ede_9",
+    "projectName": "LiquidOS Hono",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:19:16.259Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_143442d1ea654c2e",
+      "signaturePreview": "ICu0uuoXVzcfwvRPoLBaYfX/…",
+      "linearizationSeq": 9
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_143442d1ea654c2e",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":9,\"fileCount\":5,\"linearizationSeq\":9,\"permitId\":\"perm_f44fa98248e08f2c\",\"projectName\":\"LiquidOS Hono\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "ICu0uuoXVzcfwvRPoLBaYfX/PmRASZK9sG6rj3Sr6G91tZ41HLli2Xl81kMOWnzgsIZFet7+ZoSz/6WqGvgIBw==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 9
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_8",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:08:55.779Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_1f5f33004ff3f30c",
+      "signaturePreview": "15fue2twC2l+yCR2kNd3ApoA…",
+      "linearizationSeq": 8
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_1f5f33004ff3f30c",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":8,\"fileCount\":5,\"linearizationSeq\":8,\"permitId\":\"perm_1bc69eb05a6eba0b\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "15fue2twC2l+yCR2kNd3ApoAcB8QIPPE6/xkLqxItjpcuR7L2V0ZMJCtHYmS9FfEkAwEpm0R64Bp37xXptUaBw==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 8
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_8",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:08:55.769Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_1f5f33004ff3f30c",
+      "signaturePreview": "15fue2twC2l+yCR2kNd3ApoA…",
+      "linearizationSeq": 8
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_1f5f33004ff3f30c",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":8,\"fileCount\":5,\"linearizationSeq\":8,\"permitId\":\"perm_1bc69eb05a6eba0b\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "15fue2twC2l+yCR2kNd3ApoAcB8QIPPE6/xkLqxItjpcuR7L2V0ZMJCtHYmS9FfEkAwEpm0R64Bp37xXptUaBw==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 8
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_7",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:08:13.914Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_53be12d0658b147d",
+      "signaturePreview": "vazze65gSUDKaRsyES5957Ux…",
+      "linearizationSeq": 7
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_53be12d0658b147d",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":7,\"fileCount\":5,\"linearizationSeq\":7,\"permitId\":\"perm_caf6069e05f4bc2f\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "vazze65gSUDKaRsyES5957UxUvbN6EXgLq64ki4MfQRlJ6tx/gPQkXrHv7qHZRKUGpiA8BDU8JVB/l0Tlt2gDg==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 7
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_7",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:08:13.902Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_53be12d0658b147d",
+      "signaturePreview": "vazze65gSUDKaRsyES5957Ux…",
+      "linearizationSeq": 7
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_53be12d0658b147d",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":7,\"fileCount\":5,\"linearizationSeq\":7,\"permitId\":\"perm_caf6069e05f4bc2f\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "vazze65gSUDKaRsyES5957UxUvbN6EXgLq64ki4MfQRlJ6tx/gPQkXrHv7qHZRKUGpiA8BDU8JVB/l0Tlt2gDg==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 7
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_6",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:07:57.397Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_ceb16fca9661f0dc",
+      "signaturePreview": "o2AjQlveGI4gpaMPy0LRMYSx…",
+      "linearizationSeq": 6
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_ceb16fca9661f0dc",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":6,\"fileCount\":5,\"linearizationSeq\":6,\"permitId\":\"perm_edc3e639f8f991ce\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "o2AjQlveGI4gpaMPy0LRMYSx0KHPBO5OBlqUa73ebdVHTBwsgqHEi/MHySboHvnRzAIh8LTsHAtTKogmYqfYBg==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 6
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_6",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:07:57.387Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_ceb16fca9661f0dc",
+      "signaturePreview": "o2AjQlveGI4gpaMPy0LRMYSx…",
+      "linearizationSeq": 6
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_ceb16fca9661f0dc",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":6,\"fileCount\":5,\"linearizationSeq\":6,\"permitId\":\"perm_edc3e639f8f991ce\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "o2AjQlveGI4gpaMPy0LRMYSx0KHPBO5OBlqUa73ebdVHTBwsgqHEi/MHySboHvnRzAIh8LTsHAtTKogmYqfYBg==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 6
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_5",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:07:44.337Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_1042832d51a210bd",
+      "signaturePreview": "4q6L+e82wZhm+llh/ZreDzOy…",
+      "linearizationSeq": 5
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_1042832d51a210bd",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":5,\"fileCount\":5,\"linearizationSeq\":5,\"permitId\":\"perm_7e81a53aa3a4dd66\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "4q6L+e82wZhm+llh/ZreDzOyaDfOlY4LUGFqkmFPovfafgQMxBvJ92rIp9AN0T1JGVQVE7eoHeINsOMJFrk/Ag==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 5
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_5",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:07:44.326Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_1042832d51a210bd",
+      "signaturePreview": "4q6L+e82wZhm+llh/ZreDzOy…",
+      "linearizationSeq": 5
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_1042832d51a210bd",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":5,\"fileCount\":5,\"linearizationSeq\":5,\"permitId\":\"perm_7e81a53aa3a4dd66\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "4q6L+e82wZhm+llh/ZreDzOyaDfOlY4LUGFqkmFPovfafgQMxBvJ92rIp9AN0T1JGVQVE7eoHeINsOMJFrk/Ag==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 5
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_4",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:07:31.291Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_fc8ad809c0261e44",
+      "signaturePreview": "p10Ldnmzd/3nWXUkLK6VtK8H…",
+      "linearizationSeq": 4
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_fc8ad809c0261e44",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":4,\"fileCount\":5,\"linearizationSeq\":4,\"permitId\":\"perm_6e05beb13d1c427b\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "p10Ldnmzd/3nWXUkLK6VtK8H9Qsmt2ZFHCnIIoZ8agI3Q+5fgBPfAXrYS7Votbn6DaF8++efXIkYmM17b9aQAQ==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 4
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  },
+  {
+    "deploymentId": "dep_6cac6ede_4",
+    "projectName": "liquidos-hono-app",
+    "channel": "cloudflare",
+    "domain": "liquidos-hono-app.workers.dev",
+    "url": "https://liquidos-edge-webapp.workers.dev",
+    "status": "ACTIVE",
+    "createdAt": "2026-11-16T10:07:31.280Z",
+    "bundleSizeBytes": 14982,
+    "treeDigest": "6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004",
+    "bindingsDigest": "5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783",
+    "ed25519Verification": {
+      "verified": true,
+      "algorithm": "Ed25519",
+      "keyId": "key_6d18b20aed15",
+      "receiptId": "rcpt_fc8ad809c0261e44",
+      "signaturePreview": "p10Ldnmzd/3nWXUkLK6VtK8H…",
+      "linearizationSeq": 4
+    },
+    "serviceToService": {
+      "honoHealth": "CONNECTED (hono@4.6.0)",
+      "cloudflareBindings": "SYNCED (D1 + KV + R2)",
+      "workerName": "liquidos-hono-app",
+      "handshakeToken": "s2s_a748cc342bd63f53"
+    },
+    "receipt": {
+      "receiptId": "rcpt_fc8ad809c0261e44",
+      "keyId": "key_6d18b20aed15",
+      "action": "deployment_release_attestation",
+      "canonicalPayload": "{\"action\":\"deployment_release_attestation\",\"bindingsDigest\":\"5ce6bd2ed23abeed76a2dc50d17fcd01d9e102f7aa936677bd93f820834bd783\",\"channel\":\"cloudflare\",\"contract\":\"AN-EVC-001\",\"epoch\":1,\"fencingVersion\":4,\"fileCount\":5,\"linearizationSeq\":4,\"permitId\":\"perm_6e05beb13d1c427b\",\"projectName\":\"liquidos-hono-app\",\"treeDigest\":\"6cac6ede99e83d04bac0cb905d415e6e62b5dbef540775e37e878467040d0004\",\"workspaceId\":\"ws_unified_one\"}",
+      "signature": "p10Ldnmzd/3nWXUkLK6VtK8H9Qsmt2ZFHCnIIoZ8agI3Q+5fgBPfAXrYS7Votbn6DaF8++efXIkYmM17b9aQAQ==",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAMvUJLEg8TJtE31680baFKYDFZAzyi1MhVO+Xao7t/zI=\n-----END PUBLIC KEY-----\n",
+      "algorithm": "Ed25519",
+      "linearizationSeq": 4
+    },
+    "security": {
+      "encryptionAtRest": "AES-256-GCM",
+      "sslStatus": "TLS 1.3 Active",
+      "mfaEnforced": true,
+      "ddosProtection": "Cloudflare Anycast WAF L7"
+    },
+    "metrics": {
+      "bundleSize": "14.6 KB",
+      "edgeLatency": "11ms",
+      "regions": [
+        "us-west2",
+        "us-east1",
+        "eu-west1"
+      ]
+    }
+  }
+]

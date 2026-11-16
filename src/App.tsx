@@ -56,6 +56,11 @@ import { FileExplorerTab } from './components/FileExplorerTab';
 import { InteractiveTerminal } from './components/InteractiveTerminal';
 import { SandboxMetricsView } from './components/SandboxMetricsView';
 import { PublishTab } from './components/PublishTab';
+import type { PublishDeployStatus } from './components/PublishTab';
+import {
+  ed25519Validator,
+  type ClientSignedReceipt,
+} from './utils/clientEd25519Verifier';
 import { ScriptsBackupsTab } from './components/ScriptsBackupsTab';
 import { CodeEditor } from './components/CodeEditor';
 import { ArchitectureView } from './components/ArchitectureView';
@@ -324,6 +329,46 @@ export default function App() {
     return controlPlaneSessionTokenRef.current;
   };
 
+  const syncWorkspaceToOsDb = async (targetProject: Project) => {
+    const cpState = controlPlaneRef.current;
+    if (cpState.mode !== 'ACTIVE' || !cpState.activePermit) return;
+    try {
+      await ensureControlPlaneSession();
+      const res = await fetch('/api/os/wire', {
+        method: 'POST',
+        credentials: 'include',
+        headers: buildControlPlaneHeaders(),
+        body: JSON.stringify({
+          permitId: cpState.activePermit.permitId,
+          projectId: targetProject.id,
+          projectName: targetProject.name,
+          files: targetProject.files,
+          expectedEpoch: cpState.epoch,
+          expectedFencingVersion: cpState.activePermit.fencingVersion,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok && data?.receipt) {
+        setAuditLedger((prev) =>
+          recordControlPlaneAudit(
+            prev,
+            'os_database_auto_wired',
+            data.binding?.bindingId || targetProject.id,
+            'server:os_db_engine',
+            {
+              profile: data.binding?.buildProfile,
+              boundFiles: targetProject.files.length,
+              receiptId: data.receipt.receiptId,
+              keyId: data.receipt.keyId,
+            }
+          )
+        );
+      }
+    } catch {
+      // Non-blocking background plug-and-play sync
+    }
+  };
+
   const [onDeviceMount, setOnDeviceMount] = useState<OnDeviceMountStatus>({
     mode: 'disconnected',
     mountName: null,
@@ -486,6 +531,9 @@ export default function App() {
         if (Array.isArray(cpRes.recoveryQueuePaths) && cpRes.recoveryQueuePaths.length > 0) {
           const queuedSet = new Set<string>(cpRes.recoveryQueuePaths);
           setPendingSyncFiles(project.files.filter((f) => queuedSet.has(f.path)));
+        }
+        if (cpRes.state.mode === 'ACTIVE' && cpRes.state.activePermit) {
+          void syncWorkspaceToOsDb(project);
         }
       }
       setOnDeviceMount((prev) => ({
@@ -828,41 +876,391 @@ export default function App() {
     setBackups(prev => prev.filter(b => b.id !== backupId));
   };
 
+  const [publishStatus, setPublishStatus] = useState<PublishDeployStatus | null>(null);
+  const [isPublishingDeploy, setIsPublishingDeploy] = useState<boolean>(false);
+
+  const handleVerifyHonoCloudflareLink = async () => {
+    setIsPublishingDeploy(true);
+    try {
+      await ensureControlPlaneSession();
+      const res = await fetch('/api/hono/service-check', {
+        method: 'POST',
+        credentials: 'include',
+        headers: buildControlPlaneHeaders(),
+        body: JSON.stringify({
+          projectName: project.name,
+          channel: 'cloudflare',
+          files: project.files,
+          cloudflareBindings,
+          cloudflareConfig: cloudflareAccount,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        setPublishStatus({
+          ok: true,
+          message: `Hono <-> Cloudflare service-to-service link verified (${data.serviceHandshakeToken}) · Control Plane ${data.controlPlane?.mode || controlPlaneRef.current.mode}`,
+          checks: data.checks,
+        });
+      } else {
+        setPublishStatus({
+          ok: false,
+          message:
+            data?.failureReason ||
+            data?.error ||
+            `Service-to-service health check failed (HTTP ${res.status}).`,
+          checks: data?.checks,
+        });
+      }
+    } catch {
+      setPublishStatus({
+        ok: false,
+        message: 'Fail-closed: Server Control Plane unreachable for Hono/Cloudflare service check.',
+      });
+    } finally {
+      setIsPublishingDeploy(false);
+    }
+  };
+
+  const executeVerifiedChannelDeploy = async (
+    channel: 'genspark' | 'cloudflare',
+    preSuppliedReceipt?: Partial<ClientSignedReceipt> | null
+  ) => {
+    setIsPublishingDeploy(true);
+    try {
+      await ensureControlPlaneSession();
+      const permit = controlPlaneRef.current.activePermit;
+
+      let candidateReceipt: Partial<ClientSignedReceipt> | null | undefined = preSuppliedReceipt;
+      let preflightChecks: Array<{ service: string; target: string; ok: boolean; code: string; detail: string }> = [];
+      let expectedBindingsDigest: string | undefined = undefined;
+
+      // Phase 1: Obtain pre-ship Control Plane Ed25519 receipt via /api/deploy/preflight if none supplied
+      if (!candidateReceipt) {
+        const preflightRes = await fetch('/api/deploy/preflight', {
+          method: 'POST',
+          credentials: 'include',
+          headers: buildControlPlaneHeaders(),
+          body: JSON.stringify({
+            permitId: permit?.permitId || null,
+            projectName: project.name,
+            channel,
+            files: project.files,
+            cloudflareBindings,
+            cloudflareConfig: cloudflareAccount,
+            expectedEpoch: controlPlaneRef.current.epoch,
+            expectedFencingVersion: permit?.fencingVersion,
+            workspaceId: 'ws_unified_one',
+          }),
+        });
+        const preflightData = await preflightRes.json().catch(() => null);
+        preflightChecks = Array.isArray(preflightData?.checks) ? preflightData.checks : [];
+        expectedBindingsDigest =
+          typeof preflightData?.bindingsDigest === 'string'
+            ? preflightData.bindingsDigest
+            : undefined;
+
+        if (!preflightRes.ok || !preflightData?.ok) {
+          const preflightDenyMsg =
+            preflightData?.failureReason ||
+            preflightData?.error ||
+            `Deployment preflight blocked (HTTP ${preflightRes.status}): refusing to ship to cloud endpoint.`;
+          setPublishStatus({
+            ok: false,
+            message: preflightDenyMsg,
+            clientVerified: false,
+            checks: preflightChecks,
+          });
+          setAuditLedger((prev) =>
+            recordControlPlaneAudit(
+              prev,
+              'deploy_preflight_aborted',
+              permit?.permitId || `deploy_${channel}_preflight`,
+              'human:mercy',
+              {
+                channel,
+                projectName: project.name,
+                code: preflightData?.failureCode || preflightData?.code || `HTTP_${preflightRes.status}`,
+                reason: preflightDenyMsg,
+                cloudNetworkCallPrevented: true,
+              }
+            )
+          );
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `msg_deploy_preflight_blocked_${Date.now()}`,
+              sender: 'assistant',
+              timestamp: Date.now(),
+              content: `⛔ **Deployment Preflight Aborted (${channel})**: ${preflightDenyMsg}`,
+            },
+          ]);
+          return;
+        }
+        candidateReceipt = preflightData.receipt;
+      }
+
+      // Phase 2: Mandatory pre-ship Ed25519 validation BEFORE calling the cloud deployment endpoint
+      const preShipCheck = await ed25519Validator.verifyShipment({
+        receipt: candidateReceipt,
+        files: project.files,
+        cloudflareBindings,
+        cloudflareConfig: cloudflareAccount,
+        projectName: project.name,
+        channel,
+        workspaceId: 'ws_unified_one',
+        expectedBindingsDigest,
+      });
+
+      const preShipCombinedChecks = [
+        ...preflightChecks,
+        {
+          service: 'client_ed25519_verifier',
+          target: `WebCrypto (${preShipCheck.keyId || 'keyring'})`,
+          ok: preShipCheck.verified,
+          code: preShipCheck.code,
+          detail: preShipCheck.reason,
+        },
+      ];
+
+      if (!preShipCheck.verified) {
+        const mismatchMsg = `Pre-ship ed25519Validator aborted ${channel} deployment (${preShipCheck.code}): ${preShipCheck.reason}`;
+        setPublishStatus({
+          ok: false,
+          message: mismatchMsg,
+          clientVerified: false,
+          treeDigest: preShipCheck.computedTreeDigest,
+          bindingsDigest: preShipCheck.computedBindingsDigest,
+          checks: preShipCombinedChecks,
+        });
+        setAuditLedger((prev) =>
+          recordControlPlaneAudit(
+            prev,
+            'deploy_ed25519_cryptographic_mismatch',
+            preShipCheck.receiptId || `deploy_${channel}_aborted`,
+            'human:mercy',
+            {
+              channel,
+              projectName: project.name,
+              code: preShipCheck.code,
+              reason: preShipCheck.reason,
+              keyId: preShipCheck.keyId || null,
+              computedTreeDigest: preShipCheck.computedTreeDigest || null,
+              receiptTreeDigest: preShipCheck.receiptTreeDigest || null,
+              computedBindingsDigest: preShipCheck.computedBindingsDigest || null,
+              receiptBindingsDigest: preShipCheck.receiptBindingsDigest || null,
+              cloudNetworkCallPrevented: true,
+            }
+          )
+        );
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg_deploy_client_blocked_${Date.now()}`,
+            sender: 'assistant',
+            timestamp: Date.now(),
+            content: `⛔ **Ed25519 Cryptographic Mismatch — Shipment Aborted (${channel})**: ${mismatchMsg}`,
+          },
+        ]);
+        return;
+      }
+
+      // Phase 3: Only after pre-ship Ed25519 verification passes, dispatch to cloud endpoint
+      const res = await fetch('/api/cloudflare/deploy', {
+        method: 'POST',
+        credentials: 'include',
+        headers: buildControlPlaneHeaders(),
+        body: JSON.stringify({
+          permitId: permit?.permitId || null,
+          projectName: project.name,
+          channel,
+          files: project.files,
+          cloudflareBindings,
+          cloudflareConfig: cloudflareAccount,
+          gensparkSubdomain: gensparkConfig.subdomain,
+          suppliedReceipt: candidateReceipt,
+          expectedEpoch: controlPlaneRef.current.epoch,
+          expectedFencingVersion: permit?.fencingVersion,
+          workspaceId: 'ws_unified_one',
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok || !data?.ed25519Verification?.verified) {
+        const denyMsg =
+          data?.error ||
+          `Deployment blocked (HTTP ${res.status}): Ed25519 signature or Hono/Cloudflare check failed.`;
+        setPublishStatus({
+          ok: false,
+          message: denyMsg,
+          checks: data?.checks,
+        });
+        setAuditLedger((prev) =>
+          recordControlPlaneAudit(
+            prev,
+            'deploy_cloud_endpoint_rejected',
+            permit?.permitId || `deploy_${channel}_rejected`,
+            'human:mercy',
+            {
+              channel,
+              projectName: project.name,
+              code: data?.code || `HTTP_${res.status}`,
+              reason: denyMsg,
+            }
+          )
+        );
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg_deploy_blocked_${Date.now()}`,
+            sender: 'assistant',
+            timestamp: Date.now(),
+            content: `⛔ **Deployment Blocked (${channel})**: ${denyMsg}`,
+          },
+        ]);
+        return;
+      }
+
+      const postShipCheck = await ed25519Validator.verifyShipment({
+        receipt: data.receipt,
+        files: project.files,
+        cloudflareBindings,
+        cloudflareConfig: cloudflareAccount,
+        projectName: project.name,
+        channel,
+        workspaceId: 'ws_unified_one',
+        expectedBindingsDigest: data.bindingsDigest,
+      });
+
+      const serverChecks = Array.isArray(data?.checks) ? data.checks : [];
+      const combinedChecks = [
+        ...serverChecks,
+        {
+          service: 'client_ed25519_verifier',
+          target: `WebCrypto (${postShipCheck.keyId || 'keyring'})`,
+          ok: postShipCheck.verified,
+          code: postShipCheck.code,
+          detail: postShipCheck.reason,
+        },
+      ];
+
+      if (!postShipCheck.verified) {
+        const denyMsg = `Post-ship Ed25519 verification mismatch (${postShipCheck.code}): ${postShipCheck.reason}`;
+        setPublishStatus({
+          ok: false,
+          message: denyMsg,
+          clientVerified: false,
+          checks: combinedChecks,
+        });
+        setAuditLedger((prev) =>
+          recordControlPlaneAudit(
+            prev,
+            'deploy_ed25519_cryptographic_mismatch',
+            postShipCheck.receiptId || `deploy_${channel}_post_mismatch`,
+            'human:mercy',
+            {
+              channel,
+              projectName: project.name,
+              code: postShipCheck.code,
+              reason: postShipCheck.reason,
+              keyId: postShipCheck.keyId || null,
+            }
+          )
+        );
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg_deploy_client_blocked_${Date.now()}`,
+            sender: 'assistant',
+            timestamp: Date.now(),
+            content: `⛔ **Client Ed25519 Verification Blocked (${channel})**: ${denyMsg}`,
+          },
+        ]);
+        return;
+      }
+
+      setPublishStatus({
+        ok: true,
+        message: `Ed25519 Verified (${data.ed25519Verification.receiptId} · key ${data.ed25519Verification.keyId}) -> ${data.url}`,
+        receiptId: data.ed25519Verification.receiptId,
+        keyId: data.ed25519Verification.keyId,
+        clientVerified: true,
+        treeDigest: postShipCheck.computedTreeDigest,
+        bindingsDigest: postShipCheck.computedBindingsDigest,
+        checks: combinedChecks,
+      });
+
+      setAuditLedger((prev) =>
+        recordControlPlaneAudit(
+          prev,
+          `deploy_${channel}_ed25519_verified`,
+          data.deploymentId,
+          'human:mercy',
+          {
+            url: data.url,
+            receiptId: data.ed25519Verification.receiptId,
+            keyId: data.ed25519Verification.keyId,
+            linearizationSeq: data.ed25519Verification.linearizationSeq,
+            clientVerified: true,
+            clientCode: postShipCheck.code,
+            treeDigest: postShipCheck.computedTreeDigest,
+            bindingsDigest: postShipCheck.computedBindingsDigest,
+            workerName: data.serviceToService?.workerName,
+          }
+        )
+      );
+
+      if (channel === 'genspark') {
+        setGensparkConfig((prev) => ({
+          ...prev,
+          lastDeployedAt: Date.now(),
+          status: 'ACTIVE',
+          permanentUrl: data.url || prev.permanentUrl,
+          analytics: {
+            ...prev.analytics,
+            requests24h: prev.analytics.requests24h + 1,
+          },
+        }));
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'msg_deploy_genspark_' + Date.now(),
+            sender: 'assistant',
+            timestamp: Date.now(),
+            content: `⭐ **Genspark Hosting (Ed25519 Verified)**: Deployment shipped!\n\n- **Permanent URL**: [${data.url}](${data.url})\n- **Ed25519 Receipt**: \`${data.ed25519Verification.receiptId}\` (Key \`${data.ed25519Verification.keyId}\`)\n- **Service Bridge**: ${data.serviceToService?.honoHealth} · ${data.serviceToService?.cloudflareBindings}`,
+          },
+        ]);
+      } else {
+        setCloudflareAccount((prev) => ({
+          ...prev,
+          lastDeployedAt: Date.now(),
+          deploymentUrl: data.url || prev.deploymentUrl,
+        }));
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: 'msg_deploy_cf_' + Date.now(),
+            sender: 'assistant',
+            timestamp: Date.now(),
+            content: `☁️ **Cloudflare Workers Deployment (Ed25519 Verified)**: Shipped to Cloudflare!\n\n- **Production URL**: [${data.url}](${data.url})\n- **Ed25519 Receipt**: \`${data.ed25519Verification.receiptId}\` (Key \`${data.ed25519Verification.keyId}\`)\n- **D1 Database**: Bound to ID \`${cloudflareBindings.d1Databases[0]?.id}\``,
+          },
+        ]);
+      }
+    } catch {
+      setPublishStatus({
+        ok: false,
+        message: 'Fail-closed: Server Control Plane unreachable for deployment verification.',
+      });
+    } finally {
+      setIsPublishingDeploy(false);
+    }
+  };
+
   const handleDeployGenspark = () => {
-    setGensparkConfig(prev => ({
-      ...prev,
-      lastDeployedAt: Date.now(),
-      status: 'ACTIVE',
-      analytics: {
-        ...prev.analytics,
-        requests24h: prev.analytics.requests24h + 1,
-      },
-    }));
-    setMessages(prev => [
-      ...prev,
-      {
-        id: 'msg_deploy_genspark_' + Date.now(),
-        sender: 'assistant',
-        timestamp: Date.now(),
-        content: `⭐ **Genspark Hosting**: 1-Click deployment successful!\n\n- **Permanent URL**: [${gensparkConfig.permanentUrl}](${gensparkConfig.permanentUrl})\n- **SSL**: Active (Let's Encrypt Wildcard)\n- **Bindings**: D1 SQL database (*DB_PROD*) & R2 storage (*ASSETS_R2*) provisioned and bound automatically.`,
-      },
-    ]);
+    void executeVerifiedChannelDeploy('genspark');
   };
 
   const handleDeployCloudflare = () => {
-    setCloudflareAccount(prev => ({
-      ...prev,
-      lastDeployedAt: Date.now(),
-    }));
-    setMessages(prev => [
-      ...prev,
-      {
-        id: 'msg_deploy_cf_' + Date.now(),
-        sender: 'assistant',
-        timestamp: Date.now(),
-        content: `☁️ **Cloudflare Workers Deployment**: Successfully deployed to your Cloudflare account via Wrangler!\n\n- **Production URL**: [${cloudflareAccount.deploymentUrl}](${cloudflareAccount.deploymentUrl})\n- **Workers Engine**: Node.js compatibility layer active\n- **D1 Database**: Bound to ID \`${cloudflareBindings.d1Databases[0]?.id}\``,
-      },
-    ]);
+    void executeVerifiedChannelDeploy('cloudflare');
   };
 
   const handlePushGithub = () => {
@@ -1005,6 +1403,7 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     );
     setProject(updatedProj);
     setActiveFilePath(newFiles[0]?.path || 'index.html');
+    void syncWorkspaceToOsDb(updatedProj);
     setLastModifiedFile({
       path: newFiles[0]?.path || tpl.name,
       action: 'template',
@@ -1226,6 +1625,7 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
 
     setProject(outcome.project);
     setActiveFilePath(uploadedFiles[0].path);
+    void syncWorkspaceToOsDb(outcome.project);
     setLastModifiedFile({
       path: uploadedFiles.map((f) => f.path).join(', '),
       action: 'upload',
@@ -1945,6 +2345,10 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
                 cloudflareConfig={cloudflareAccount}
                 githubConfig={githubRepo}
                 bindings={cloudflareBindings}
+                controlPlaneState={controlPlaneState}
+                publishStatus={publishStatus}
+                isDeploying={isPublishingDeploy}
+                onVerifyServiceLink={handleVerifyHonoCloudflareLink}
                 onDeployGenspark={handleDeployGenspark}
                 onDeployCloudflare={handleDeployCloudflare}
                 onPushGithub={handlePushGithub}
@@ -1965,6 +2369,11 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
             }
             renderArchitecture={
               <ArchitectureView
+                project={project}
+                controlPlaneState={controlPlaneState}
+                ensureControlPlaneSession={ensureControlPlaneSession}
+                buildControlPlaneHeaders={buildControlPlaneHeaders}
+                onOsAuditEvent={(entry) => setAuditLedger((prev) => [...prev, entry])}
                 onOpenIngressShield={() => setIsIngressShieldOpen(true)}
                 onOpenManifest={() => setIsManifestOpen(true)}
                 onOpenEnterpriseMcp={() => setIsEnterpriseMcpOpen(true)}
@@ -2010,6 +2419,20 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
         isOpen={isDeployOpen}
         onClose={() => setIsDeployOpen(false)}
         project={project}
+        controlPlaneState={controlPlaneState}
+        cloudflareBindings={cloudflareBindings}
+        cloudflareConfig={cloudflareAccount}
+        ensureControlPlaneSession={ensureControlPlaneSession}
+        buildControlPlaneHeaders={buildControlPlaneHeaders}
+        onDeploymentVerified={(rec) => {
+          setAuditLedger((prev) =>
+            recordControlPlaneAudit(prev, 'edge_deployment_ed25519_verified', rec.id, 'human:mercy', {
+              url: rec.url,
+              receiptId: rec.ed25519Verification?.receiptId,
+              keyId: rec.ed25519Verification?.keyId,
+            })
+          );
+        }}
       />
 
       {/* Five-Ring Ingress Shield & Entry Point Security Modal */}

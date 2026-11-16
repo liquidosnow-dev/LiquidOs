@@ -1,4 +1,4 @@
-import {
+import type {
   CloudSandboxSpecs,
   SandboxMetrics,
   CloudflareBindings,
@@ -6,8 +6,8 @@ import {
   CloudflareAccountConfig,
   GitHubRepoConfig,
   SandboxBackup,
-} from '../types/sandbox';
-import { ProjectFile } from '../types';
+} from '../types/sandbox.ts';
+import type { ProjectFile } from '../types/index.ts';
 
 export const INITIAL_SANDBOX_SPECS: CloudSandboxSpecs = {
   plan: 'Pro',
