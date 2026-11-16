@@ -63,6 +63,11 @@ LiquidOs is structured as a strict layered system. Lower layers provide guarante
 **Component**: ggml / llama.cpp  
 **Responsibility**: Local, private, low-latency inference for sensitive or offline workloads.
 
+The Runtime Plane executes local inference and orchestrates agentic behavior.
+- **Core Substrate:** Rust/Node orchestration, local sandbox runners.
+- **Governed Execution:** Autonomous code mutation is strictly bound by the `an-nexus` bridge. No mutation can occur without a signed `d_attest` receipt.
+- **Workflow Library:** See [CodexFlow: Workflows 1–5](CODEXFLOW.md#1-code-generation--self-modification-runtime--governance) for self-mutation loops and AST sandboxing.
+
 ### 7. Live Verification & Browser Infrastructure
 **Components**:
 - Chrome DevTools for agents (interactive observation, auditing, Lighthouse)
@@ -81,6 +86,13 @@ LiquidOs is structured as a strict layered system. Lower layers provide guarante
 ### 10. Team Orchestration & Self-Improving Workflows
 **Component**: LoopForge  
 **Responsibility**: Multi-role SOPs, hard quality gates, team-scale delivery, and continuous improvement loops.
+
+## Interoperability Plane (Hardware & Device Bridges)
+
+Hardware and device bridges.
+- **Core Substrate:** MCP Gateway, OpenToys, local mDNS.
+- **Physical Actuation:** Hardware commands are wrapped in signed envelopes. Unauthorized actuators are blocked at the PPE layer.
+- **Workflow Library:** See [CodexFlow: Workflows 16–20](CODEXFLOW.md#4-hardware--interoperability-interoperability) for device handshakes and firmware verification.
 
 ## Data & Control Flow (Typical Non-Trivial Task)
 
