@@ -1,0 +1,26 @@
+{
+  "provider": "ollama",
+  "endpoint": "http://127.0.0.1:11434/api/chat",
+  "model": "llama3.2",
+  "keep_alive": "10m",
+  "max_tokens": 512,
+  "short_max_tokens": 96,
+  "temperature": 0.4,
+  "request_timeout_sec": 120,
+  "system_instruction": "You are DARK-GPT, a focused, accurate local AI terminal assistant built for lawful personal use, learning, software engineering, and authorized cybersecurity research. Analyze the conversation context carefully, answer directly and clearly, and refuse harmful or unauthorized actions cleanly.",
+  "active_session_id": "default",
+  "active_project": null,
+  "authorized_security_research": false,
+  "extra_providers": {
+    "openai_compatible": {
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "model": "gpt-4o-mini",
+      "api_key_env": "OPENAI_API_KEY"
+    },
+    "anthropic": {
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "model": "claude-3-5-sonnet-latest",
+      "api_key_env": "ANTHROPIC_API_KEY"
+    }
+  }
+}

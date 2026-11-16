@@ -12,6 +12,11 @@ import { generateDeterministicEmbedding } from './services/snapshotPipeline';
 import { createCommit, rollbackToCommit, verifyCommitIntegrity } from './utils/versionControl';
 import { extractFilesFromResponse, safeEvaluateMath } from './utils/toolExecutor';
 import {
+  AutonomousTask,
+  FileModification,
+  runRecursiveLoop,
+} from './engine/recursiveEngine';
+import {
   ControlPlaneState,
   SnapshotValidationReport,
   WatchVerificationReport,
@@ -254,6 +259,9 @@ export default function App() {
   const deviceCapabilities = useMemo(() => detectFileSystemCapabilities(), []);
   const deviceDirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const inFlightSyncAbortRef = useRef<Set<AbortController>>(new Set());
+  const recursiveLoopAbortRef = useRef<AbortController | null>(null);
+  const [autonomousMode, setAutonomousMode] = useState<boolean>(true);
+  const [autonomousStatus, setAutonomousStatus] = useState<string | null>(null);
   const [deviceDiskFiles, setDeviceDiskFiles] = useState<ProjectFile[] | null>(null);
   const [pendingSyncFiles, setPendingSyncFiles] = useState<ProjectFile[]>(() => {
     const storedPaths = new Set(loadRecoveryQueueFromStorage());
@@ -354,6 +362,10 @@ export default function App() {
         ctrl.abort(`GLOBAL-MODE-001_${nextMode}`);
       }
       inFlightSyncAbortRef.current.clear();
+      if (recursiveLoopAbortRef.current) {
+        recursiveLoopAbortRef.current.abort(`GLOBAL-MODE-001_${nextMode}`);
+        recursiveLoopAbortRef.current = null;
+      }
     }
     const effectiveReason = reason || `Operator transitioned GLOBAL-MODE-001 to ${nextMode}`;
     try {
@@ -1368,7 +1380,7 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     }, 1000);
   };
 
-  // Handle sending a chat message to Codex Tool-Calling Engine
+  // Handle sending a chat message to Codex / RecursiveEngine autonomous workflow
   const handleSendMessage = async (promptText: string, persona?: string) => {
     const userMsg: ChatMessage = {
       id: Math.random().toString(36).substring(2, 9),
@@ -1383,6 +1395,153 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     const toolCalls: ToolCall[] = [];
 
     try {
+      if (autonomousMode) {
+        const loopController = new AbortController();
+        recursiveLoopAbortRef.current = loopController;
+        setAutonomousStatus('Initializing RecursiveEngine (Vault Read → Execute → Evaluate → Ed25519 Attest)...');
+
+        let latestAssistantText = '';
+        const loopResult = await runRecursiveLoop({
+          goal: promptText,
+          project,
+          maxIterations: 3,
+          autoRepairOnEvalFailure: true,
+          actor: 'agent:codex_recursive',
+          getControlPlaneState: () => controlPlaneRef.current,
+          getAuthHeaders: async () => {
+            await ensureControlPlaneSession();
+            return buildControlPlaneHeaders();
+          },
+          auditLedger,
+          signal: loopController.signal,
+          onProgress: (ev) => {
+            setAutonomousStatus(`[Iter ${ev.iteration}] ${ev.message}`);
+          },
+          planTasks: async ({ goal, iteration, completedTasks }) => {
+            if (iteration === 1 && completedTasks.length === 0) {
+              const clauses = goal
+                .split(/\b(?:and then|then)\b|[\n;]+/i)
+                .map((s) => s.trim())
+                .filter((s) => s.length > 4);
+
+              if (clauses.length > 1) {
+                return clauses.slice(0, 3).map((clause, idx) => ({
+                  id: `step_${idx + 1}`,
+                  title: `Step ${idx + 1}: ${clause.slice(0, 48)}`,
+                  description: clause,
+                }));
+              }
+
+              return [
+                {
+                  id: 'step_1_synthesize',
+                  title: 'Synthesize & implement workspace changes',
+                  description: goal,
+                },
+                {
+                  id: 'step_2_verify_refine',
+                  title: 'Audit invariants & finalize workspace deliverables',
+                  description: `Verify consistency, edge cases, and security posture for: ${goal}`,
+                },
+              ];
+            }
+            return [];
+          },
+          executeTask: async ({ goal, task, iteration, project: curProj, vault, signal }) => {
+            const vectorContext = vault.lancedb.hits.slice(0, 4).map((h) => ({
+              url: h.url,
+              content: h.content,
+              similarity: h.similarity,
+            }));
+
+            const taskPrompt = [
+              `[RecursiveEngine Iteration ${iteration} | Task ${task.id}: ${task.title}]`,
+              `Goal: ${goal}`,
+              `Task Instruction: ${task.description}`,
+              `DuckDB Workspace Summary (${vault.duckdb.rowCount} rows): ${JSON.stringify(vault.duckdb.rows.slice(0, 6))}`,
+              `Current Workspace Files: ${curProj.files.map((f) => f.path).join(', ')}`,
+            ].join('\n');
+
+            const response = await fetch('/api/ai/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal,
+              body: JSON.stringify({
+                messages: [...messages, userMsg, { id: task.id, sender: 'user', content: taskPrompt, timestamp: Date.now() }],
+                model: selectedModel.id,
+                persona,
+                settings,
+                vectorContext,
+              }),
+            });
+
+            const data = await response.json();
+            const replyText = data.text || 'Task executed.';
+            latestAssistantText = replyText;
+
+            const { files: extracted } = extractFilesFromResponse(replyText);
+            const modifications: FileModification[] = extracted.map((f) => ({
+              path: f.path,
+              action: curProj.files.some((existing) => existing.path === f.path)
+                ? 'modify'
+                : 'create',
+              content: f.content,
+              rationale: task.title,
+            }));
+
+            return {
+              summary: `Completed "${task.title}" (${modifications.length} file change(s))`,
+              modifications,
+            };
+          },
+        });
+
+        recursiveLoopAbortRef.current = null;
+        setAuditLedger(loopResult.auditLedger);
+
+        if (loopResult.success && loopResult.commits.length > 0) {
+          setProject(loopResult.project);
+          const changed = loopResult.traces.flatMap((t) => t.evaluation.changedPaths);
+          if (changed.length > 0) {
+            setActiveFilePath(changed[0]);
+            setLastModifiedFile({
+              path: changed.length === 1 ? changed[0] : `${changed.length} files`,
+              action: 'recursive_attest',
+              timestamp: Date.now(),
+            });
+            setRightPanelTab('preview');
+          }
+        }
+
+        const latestReceipt =
+          loopResult.attestations[loopResult.attestations.length - 1]?.receipt;
+        const statusHeader = loopResult.success
+          ? `### RecursiveEngine Autonomous Run Complete (${loopResult.totalTasksExecuted} task(s), ${loopResult.iterationsCompleted} iteration(s))\n` +
+            (latestReceipt
+              ? `> **Ed25519 Attestation:** \`${latestReceipt.receiptId}\` · Key \`${latestReceipt.keyId}\` · Seq #${latestReceipt.linearizationSeq}\n\n`
+              : '\n')
+          : `### RecursiveEngine Halted (${loopResult.aborted ? 'Aborted' : 'Fail-Closed'})\n> Reason: ${loopResult.reason || 'Verification or Control Plane check failed.'}\n\n`;
+
+        const assistantMsg: ChatMessage = {
+          id: Math.random().toString(36).substring(2, 9),
+          sender: 'assistant',
+          model: selectedModel.name,
+          persona,
+          timestamp: Date.now(),
+          content: statusHeader + (latestAssistantText || loopResult.completedTasks.map((t) => `- **${t.title}**: ${t.summary}`).join('\n')),
+          toolCalls: loopResult.toolCalls,
+          appliedToProject: loopResult.success && loopResult.commits.length > 0,
+        };
+
+        setMessages(prev => [...prev, assistantMsg]);
+        trackInteraction(
+          promptText,
+          loopResult.toolCalls.map(tc => tc.toolName),
+          loopResult.success
+        );
+        return;
+      }
+
       // 1. Check for client-side tool calling (e.g. math evaluation or fast execution)
       const mathMatch = promptText.match(/(?:calculate|math|eval|compute)\s+([0-9+\-*/().,%^ \t\neE]+)/i);
 
@@ -1495,6 +1654,8 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
         false
       );
     } finally {
+      recursiveLoopAbortRef.current = null;
+      setAutonomousStatus(null);
       setIsLoading(false);
     }
   };
@@ -1667,6 +1828,12 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
             files={project.files}
             externalPrompt={externalPrompt}
             onClearExternalPrompt={() => setExternalPrompt(undefined)}
+            autonomousMode={autonomousMode}
+            onToggleAutonomousMode={() => setAutonomousMode((prev) => !prev)}
+            autonomousStatus={autonomousStatus}
+            onStopAutonomousLoop={() => {
+              recursiveLoopAbortRef.current?.abort('operator_stopped_loop');
+            }}
           />
         </div>
 
