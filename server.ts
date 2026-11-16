@@ -1,4 +1,5 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -45,16 +46,18 @@ import {
   appendSubstrateLedger,
   verifySubstrateLedger,
   dispatchSubstrateToolLocal,
-  SubstrateLedgerEntry,
 } from './src/utils/sovereignSubstrate.ts';
+import type { SubstrateLedgerEntry } from './src/utils/sovereignSubstrate.ts';
 import {
   DEFAULT_PLAY_STORE_CONFIG,
-  PlayStoreReleaseConfig,
-  PlayStoreRuntimeEvidence,
   buildAssetLinksJson,
   isValidAndroidPackageId,
   isValidSha256Fingerprint,
   runFullScalePlayStoreAudit,
+} from './src/utils/playStoreAudit.ts';
+import type {
+  PlayStoreReleaseConfig,
+  PlayStoreRuntimeEvidence,
 } from './src/utils/playStoreAudit.ts';
 import {
   CONTROL_PLANE_AUTH_MATRIX,
@@ -1622,7 +1625,8 @@ app.post('/api/workspace/export-tar', (req: Request, res: Response) => {
 
 // Serve Coalition Code-Assembly Handshake modules live without truncation
 app.get('/api/workspace/coalition-module/:moduleId', (req: Request, res: Response) => {
-  const { moduleId } = req.params;
+  const rawModuleId = req.params.moduleId;
+  const moduleId = Array.isArray(rawModuleId) ? rawModuleId[0] : rawModuleId;
   const rootDir = process.cwd();
 
   const readFileEntry = (relPath: string): {
@@ -2368,8 +2372,9 @@ app.get('/api/health', (req: Request, res: Response) => {
 async function startServer() {
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));
-    app.get('*', (req: Request, res: Response) => {
-      res.sendFile(path.resolve('dist/index.html'));
+    app.get(/.*/, (req: Request, res: Response, next) => {
+      if (req.path.startsWith('/api/')) return next();
+      return res.sendFile(path.resolve('dist/index.html'));
     });
   } else {
     // Intercept /@vite/client to serve a clean client without HMR WebSockets

@@ -1143,6 +1143,205 @@ export async function runRecursiveLoop(
   return recursiveEngine.run(options);
 }
 
+export interface RequestRoutingDecision {
+  route: 'recursive_loop' | 'single_turn';
+  reason: string;
+  complexityScore: number;
+  signals: string[];
+  tasks: Array<Omit<AutonomousTask, 'status'>>;
+}
+
+const MULTI_STEP_VERB_RE =
+  /\b(build|create|implement|add|update|modify|refactor|fix|wire|integrate|migrate|configure|deploy|test|verify|audit|optimize|connect|design|scaffold|extract|enforce)\b/gi;
+
+const COMPLEX_SCOPE_RE =
+  /\b(full[- ]?stack|end[- ]?to[- ]?end|multi[- ]?step|autonomous|architecture|pipeline|duckdb|lancedb|vault|attestation|control[- ]?plane|ed25519|cloudflare|hono|refactor|migration|comprehensive|workflow)\b/gi;
+
+const FILE_TARGET_RE =
+  /(?:@[a-zA-Z0-9_./-]+|\b[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+\b|\b[a-zA-Z0-9_-]+\.(?:ts|tsx|js|jsx|py|html|css|json|sql|md)\b)/g;
+
+/**
+ * Splits a complex or multi-step user prompt into ordered, bounded AutonomousTask items.
+ */
+export function decomposePromptIntoTasks(
+  prompt: string
+): Array<Omit<AutonomousTask, 'status'>> {
+  const trimmed = prompt.trim();
+  if (!trimmed) return [];
+
+  // 1. Check for numbered or bulleted multi-line lists
+  const listLines = trimmed
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*(?:\d+[.)]|[-*•])\s+/, '').trim())
+    .filter((line) => line.length > 4);
+
+  const hasExplicitList =
+    trimmed.split(/\n+/).filter((l) => /^\s*(?:\d+[.)]|[-*•])\s+/.test(l)).length >= 2;
+
+  if (hasExplicitList && listLines.length >= 2) {
+    return listLines.slice(0, 5).map((clause, idx) => ({
+      id: `step_${idx + 1}`,
+      title: `Step ${idx + 1}: ${clause.slice(0, 52)}${clause.length > 52 ? '...' : ''}`,
+      description: clause,
+    }));
+  }
+
+  // 2. Check for inline sequential connectors ("and then", "then", ";", "after that", "followed by", "finally")
+  const clauses = trimmed
+    .split(/\s*(?:\band then\b|\bthen\b|\bafter that\b|\bfollowed by\b|\bfinally\b|;|\n)\s*/i)
+    .map((s) => s.replace(/^[,.\s]+|[,.\s]+$/g, '').trim())
+    .filter((s) => s.length > 4);
+
+  if (clauses.length >= 2) {
+    return clauses.slice(0, 5).map((clause, idx) => ({
+      id: `step_${idx + 1}`,
+      title: `Step ${idx + 1}: ${clause.slice(0, 52)}${clause.length > 52 ? '...' : ''}`,
+      description: clause,
+    }));
+  }
+
+  // 3. Check for comma/conjunction joined action clauses ("Build X, add Y, and write tests for Z")
+  const actionJoinClauses = trimmed
+    .split(/,\s*(?:and\s+)?|\s+\band\b\s+(?=(?:build|create|implement|add|update|modify|refactor|fix|wire|integrate|migrate|configure|deploy|test|verify|audit|optimize|connect)\b)/i)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 5);
+
+  if (actionJoinClauses.length >= 2) {
+    return actionJoinClauses.slice(0, 5).map((clause, idx) => ({
+      id: `step_${idx + 1}`,
+      title: `Step ${idx + 1}: ${clause.slice(0, 52)}${clause.length > 52 ? '...' : ''}`,
+      description: clause,
+    }));
+  }
+
+  // 4. Single high-complexity prompt: decompose into synthesis + verification/refinement phases
+  return [
+    {
+      id: 'step_1_synthesize',
+      title: 'Synthesize & implement workspace changes',
+      description: trimmed,
+    },
+    {
+      id: 'step_2_verify_refine',
+      title: 'Audit invariants & finalize workspace deliverables',
+      description: `Verify structural invariants, edge cases, and security posture for: ${trimmed}`,
+    },
+  ];
+}
+
+/**
+ * Determines whether a prompt is a complex / multi-step request that should be
+ * routed through RecursiveEngine instead of a single-turn completion.
+ */
+export function classifyAndPlanRequest(
+  prompt: string,
+  options?: { autonomousMode?: boolean }
+): RequestRoutingDecision {
+  const trimmed = (prompt || '').trim();
+  if (!trimmed) {
+    return {
+      route: 'single_turn',
+      reason: 'Empty prompt.',
+      complexityScore: 0,
+      signals: [],
+      tasks: [],
+    };
+  }
+
+  if (options?.autonomousMode === false) {
+    return {
+      route: 'single_turn',
+      reason: 'Single-Shot mode selected by operator.',
+      complexityScore: 0,
+      signals: ['operator_single_shot'],
+      tasks: [],
+    };
+  }
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+  const signals: string[] = [];
+  let score = 0;
+
+  // Fast-path pure single-turn math calculations
+  if (
+    /^\s*(?:calculate|math|eval|compute)\s+[0-9+\-*/().,%^ \t\neE]+$/i.test(trimmed)
+  ) {
+    return {
+      route: 'single_turn',
+      reason: 'Single-turn arithmetic evaluation.',
+      complexityScore: 0,
+      signals: ['pure_math'],
+      tasks: [],
+    };
+  }
+
+  const listItemsCount = trimmed
+    .split(/\n+/)
+    .filter((l) => /^\s*(?:\d+[.)]|[-*•])\s+\S+/.test(l)).length;
+  if (listItemsCount >= 2) {
+    score += 3;
+    signals.push(`list_steps:${listItemsCount}`);
+  }
+
+  const sequentialSplit = trimmed
+    .split(/\s*(?:\band then\b|\bthen\b|\bafter that\b|\bfollowed by\b|\bfinally\b|;)\s*/i)
+    .filter((s) => s.trim().length > 4);
+  if (sequentialSplit.length >= 2) {
+    score += 2;
+    signals.push(`sequential_clauses:${sequentialSplit.length}`);
+  }
+
+  const verbMatches = Array.from(
+    new Set((trimmed.match(MULTI_STEP_VERB_RE) || []).map((v) => v.toLowerCase()))
+  );
+  if (verbMatches.length >= 2) {
+    score += 2;
+    signals.push(`action_verbs:${verbMatches.join(',')}`);
+  }
+
+  const fileTargets = Array.from(new Set(trimmed.match(FILE_TARGET_RE) || []));
+  if (fileTargets.length >= 2) {
+    score += 2;
+    signals.push(`multi_file_targets:${fileTargets.length}`);
+  } else if (fileTargets.length === 1 && verbMatches.length >= 1) {
+    score += 1;
+    signals.push(`file_target:${fileTargets[0]}`);
+  }
+
+  const scopeMatches = Array.from(
+    new Set((trimmed.match(COMPLEX_SCOPE_RE) || []).map((s) => s.toLowerCase()))
+  );
+  if (scopeMatches.length >= 1) {
+    score += scopeMatches.length >= 2 ? 2 : 1;
+    signals.push(`complex_scope:${scopeMatches.join(',')}`);
+  }
+
+  if (wordCount >= 24 && verbMatches.length >= 1) {
+    score += 2;
+    signals.push(`detailed_spec:${wordCount}w`);
+  }
+
+  if (score >= 2) {
+    const tasks = decomposePromptIntoTasks(trimmed);
+    return {
+      route: 'recursive_loop',
+      reason: `Complex/multi-step request detected (${signals.join('; ')}). Routing through RecursiveEngine.`,
+      complexityScore: score,
+      signals,
+      tasks,
+    };
+  }
+
+  return {
+    route: 'single_turn',
+    reason: 'Simple single-turn request; executing direct completion.',
+    complexityScore: score,
+    signals: signals.length > 0 ? signals : ['simple_prompt'],
+    tasks: [],
+  };
+}
+
 /**
  * Single-cycle compatibility entry point built atop RecursiveEngine.
  */

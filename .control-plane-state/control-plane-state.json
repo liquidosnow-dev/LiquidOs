@@ -175,6 +175,38 @@
       },
       "previousHash": "cb588d323c9837e5c1d4a26046a482482734954f30ca200681a51f33d372908a",
       "hash": "84d562832b1611df94a6c746aea7be54e488ef1689ce3ab9a93dc8ae590e7952"
+    },
+    {
+      "index": 8,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794821776106,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 8,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "84d562832b1611df94a6c746aea7be54e488ef1689ce3ab9a93dc8ae590e7952",
+      "hash": "d34f99ff8b894b000d14874c93c144dc906c7252a5d3e28a60ec4574877942a2"
+    },
+    {
+      "index": 9,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1794821907538,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 9,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "d34f99ff8b894b000d14874c93c144dc906c7252a5d3e28a60ec4574877942a2",
+      "hash": "b363f371e4da3fb0e65902a45e455f21b96e65855cf8818afa4b112fcee327a8"
     }
   ],
   "checkpoints": [
@@ -257,6 +289,26 @@
       "keyId": "key_6d18b20aed15",
       "canonicalPayload": "{\"checkpointSeq\":8,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":8,\"timestamp\":1794779913880,\"tipHash\":\"84d562832b1611df94a6c746aea7be54e488ef1689ce3ab9a93dc8ae590e7952\",\"tipIndex\":7}",
       "signature": "/Hc2G3ZyromEF+uXXJ1XSBboLEVKvPFKkPbmL29gjP/i+ofs/KwBNgkslN9dkDkrh7rTr/WchuTPnIHtWOSwCg=="
+    },
+    {
+      "checkpointSeq": 9,
+      "ledgerLength": 9,
+      "tipIndex": 8,
+      "tipHash": "d34f99ff8b894b000d14874c93c144dc906c7252a5d3e28a60ec4574877942a2",
+      "timestamp": 1794821776106,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":9,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":9,\"timestamp\":1794821776106,\"tipHash\":\"d34f99ff8b894b000d14874c93c144dc906c7252a5d3e28a60ec4574877942a2\",\"tipIndex\":8}",
+      "signature": "3TPtliDdrQrkghuJXk2vXeIkGRR7lsLvRADqpRIs1mMSEEvZFJ28glitf+D7FnOAysq91Seks/4Z181jCSW8Cg=="
+    },
+    {
+      "checkpointSeq": 10,
+      "ledgerLength": 10,
+      "tipIndex": 9,
+      "tipHash": "b363f371e4da3fb0e65902a45e455f21b96e65855cf8818afa4b112fcee327a8",
+      "timestamp": 1794821907538,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":10,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":10,\"timestamp\":1794821907538,\"tipHash\":\"b363f371e4da3fb0e65902a45e455f21b96e65855cf8818afa4b112fcee327a8\",\"tipIndex\":9}",
+      "signature": "IwxMkibYPiF6WNOv4h4XzdaP9P4Tp7ZlYIs5Lg09vj0npokxI6cxUPNV47L7hfy1DgTQVyyBuvrDuEb6CU4yAQ=="
     }
   ],
   "recoveryQueuePaths": [],

@@ -8,8 +8,8 @@
  *   authorization grants, and independent control remain NOT_RUN.
  */
 
-import { sha256Hex } from './securityCrypto';
-import { ProjectFile } from '../types';
+import { sha256Hex } from './securityCrypto.ts';
+import type { ProjectFile } from '../types/index.ts';
 
 export const MAX_SAFE_INT = Number.MAX_SAFE_INTEGER; // 2^53 - 1 = 9007199254740991
 

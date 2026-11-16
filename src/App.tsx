@@ -12,8 +12,8 @@ import { generateDeterministicEmbedding } from './services/snapshotPipeline';
 import { createCommit, rollbackToCommit, verifyCommitIntegrity } from './utils/versionControl';
 import { extractFilesFromResponse, safeEvaluateMath } from './utils/toolExecutor';
 import {
-  AutonomousTask,
   FileModification,
+  classifyAndPlanRequest,
   runRecursiveLoop,
 } from './engine/recursiveEngine';
 import {
@@ -1395,16 +1395,23 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     const toolCalls: ToolCall[] = [];
 
     try {
-      if (autonomousMode) {
+      const routing = classifyAndPlanRequest(promptText, { autonomousMode });
+
+      if (routing.route === 'recursive_loop') {
         const loopController = new AbortController();
         recursiveLoopAbortRef.current = loopController;
-        setAutonomousStatus('Initializing RecursiveEngine (Vault Read → Execute → Evaluate → Ed25519 Attest)...');
+        setAutonomousStatus(
+          `Routing complex request (${routing.tasks.length} step(s)) via RecursiveEngine...`
+        );
 
-        let latestAssistantText = '';
+        const taskTranscripts: string[] = [];
+        const completedSummaries: string[] = [];
+
         const loopResult = await runRecursiveLoop({
           goal: promptText,
           project,
-          maxIterations: 3,
+          initialTasks: routing.tasks,
+          maxIterations: 4,
           autoRepairOnEvalFailure: true,
           actor: 'agent:codex_recursive',
           getControlPlaneState: () => controlPlaneRef.current,
@@ -1417,36 +1424,6 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
           onProgress: (ev) => {
             setAutonomousStatus(`[Iter ${ev.iteration}] ${ev.message}`);
           },
-          planTasks: async ({ goal, iteration, completedTasks }) => {
-            if (iteration === 1 && completedTasks.length === 0) {
-              const clauses = goal
-                .split(/\b(?:and then|then)\b|[\n;]+/i)
-                .map((s) => s.trim())
-                .filter((s) => s.length > 4);
-
-              if (clauses.length > 1) {
-                return clauses.slice(0, 3).map((clause, idx) => ({
-                  id: `step_${idx + 1}`,
-                  title: `Step ${idx + 1}: ${clause.slice(0, 48)}`,
-                  description: clause,
-                }));
-              }
-
-              return [
-                {
-                  id: 'step_1_synthesize',
-                  title: 'Synthesize & implement workspace changes',
-                  description: goal,
-                },
-                {
-                  id: 'step_2_verify_refine',
-                  title: 'Audit invariants & finalize workspace deliverables',
-                  description: `Verify consistency, edge cases, and security posture for: ${goal}`,
-                },
-              ];
-            }
-            return [];
-          },
           executeTask: async ({ goal, task, iteration, project: curProj, vault, signal }) => {
             const vectorContext = vault.lancedb.hits.slice(0, 4).map((h) => ({
               url: h.url,
@@ -1454,20 +1431,38 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
               similarity: h.similarity,
             }));
 
+            const targetContextFiles = (task.targetPaths || [])
+              .map((p) => curProj.files.find((f) => f.path === p))
+              .filter((f): f is ProjectFile => Boolean(f))
+              .slice(0, 4)
+              .map((f) => `--- ${f.path} ---\n${f.content.slice(0, 2000)}`);
+
             const taskPrompt = [
               `[RecursiveEngine Iteration ${iteration} | Task ${task.id}: ${task.title}]`,
-              `Goal: ${goal}`,
-              `Task Instruction: ${task.description}`,
+              `Overall Goal: ${goal}`,
+              `Step Instruction: ${task.description}`,
+              completedSummaries.length > 0
+                ? `Completed Prior Steps:\n${completedSummaries.map((s) => `- ${s}`).join('\n')}`
+                : null,
               `DuckDB Workspace Summary (${vault.duckdb.rowCount} rows): ${JSON.stringify(vault.duckdb.rows.slice(0, 6))}`,
               `Current Workspace Files: ${curProj.files.map((f) => f.path).join(', ')}`,
-            ].join('\n');
+              targetContextFiles.length > 0
+                ? `Relevant File Contents:\n${targetContextFiles.join('\n\n')}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join('\n\n');
 
             const response = await fetch('/api/ai/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               signal,
               body: JSON.stringify({
-                messages: [...messages, userMsg, { id: task.id, sender: 'user', content: taskPrompt, timestamp: Date.now() }],
+                messages: [
+                  ...messages,
+                  userMsg,
+                  { id: task.id, sender: 'user', content: taskPrompt, timestamp: Date.now() },
+                ],
                 model: selectedModel.id,
                 persona,
                 settings,
@@ -1475,9 +1470,15 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
               }),
             });
 
-            const data = await response.json();
-            const replyText = data.text || 'Task executed.';
-            latestAssistantText = replyText;
+            const data = await response.json().catch(() => null);
+            if (!response.ok) {
+              throw new Error(
+                data?.error || `AI completion failed during step "${task.title}" (HTTP ${response.status}).`
+              );
+            }
+
+            const replyText = data?.text || `Executed ${task.title}.`;
+            taskTranscripts.push(`#### ${task.title}\n${replyText}`);
 
             const { files: extracted } = extractFilesFromResponse(replyText);
             const modifications: FileModification[] = extracted.map((f) => ({
@@ -1489,8 +1490,11 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
               rationale: task.title,
             }));
 
+            const stepSummary = `Completed "${task.title}" (${modifications.length} file change(s))`;
+            completedSummaries.push(stepSummary);
+
             return {
-              summary: `Completed "${task.title}" (${modifications.length} file change(s))`,
+              summary: stepSummary,
               modifications,
             };
           },
@@ -1517,6 +1521,7 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
           loopResult.attestations[loopResult.attestations.length - 1]?.receipt;
         const statusHeader = loopResult.success
           ? `### RecursiveEngine Autonomous Run Complete (${loopResult.totalTasksExecuted} task(s), ${loopResult.iterationsCompleted} iteration(s))\n` +
+            `> **Routing:** ${routing.reason}\n` +
             (latestReceipt
               ? `> **Ed25519 Attestation:** \`${latestReceipt.receiptId}\` · Key \`${latestReceipt.keyId}\` · Seq #${latestReceipt.linearizationSeq}\n\n`
               : '\n')
@@ -1528,7 +1533,11 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
           model: selectedModel.name,
           persona,
           timestamp: Date.now(),
-          content: statusHeader + (latestAssistantText || loopResult.completedTasks.map((t) => `- **${t.title}**: ${t.summary}`).join('\n')),
+          content:
+            statusHeader +
+            (taskTranscripts.length > 0
+              ? taskTranscripts.join('\n\n---\n\n')
+              : loopResult.completedTasks.map((t) => `- **${t.title}**: ${t.summary}`).join('\n')),
           toolCalls: loopResult.toolCalls,
           appliedToProject: loopResult.success && loopResult.commits.length > 0,
         };

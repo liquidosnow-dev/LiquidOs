@@ -1,4 +1,4 @@
-import { sha256Hex } from './securityCrypto';
+import { sha256Hex } from './securityCrypto.ts';
 
 /**
  * Sovereign Security Primitives, Rule S4 Lexical AST SQL Guard,

@@ -2,24 +2,26 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import * as esbuild from 'esbuild';
-import { AuditLedgerEntry, ProjectFile, VerificationClaimLevel } from '../types';
-import { assertSafeIntegerLiterals, canonicalize } from './contractRegistry';
-import { validateIngestPath } from './onDeviceFs';
-import { verifyAuditLedgerIntegrity } from './securityCrypto';
-import {
+import type { AuditLedgerEntry, ProjectFile, VerificationClaimLevel } from '../types/index.ts';
+import { assertSafeIntegerLiterals, canonicalize } from './contractRegistry.ts';
+import { validateIngestPath } from './onDeviceFs.ts';
+import { verifyAuditLedgerIntegrity } from './securityCrypto.ts';
+import type {
   AuthorizationCheckResult,
   ControlPlaneState,
   IngestionPermit,
   ProtectedOperationScope,
   WatchFileVerificationEntry,
   WatchVerificationReport,
+} from './ingestionControlPlane.ts';
+import {
   authorizeProtectedOperation,
   computeWorkspaceFileHashes,
   createUninitializedControlPlaneState,
   issueIngestionPermit,
   recordControlPlaneAudit,
   transitionGlobalMode,
-} from './ingestionControlPlane';
+} from './ingestionControlPlane.ts';
 
 export type ControlPlaneRole = 'viewer' | 'operator' | 'admin';
 

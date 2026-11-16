@@ -1,4 +1,4 @@
-import { ProjectFile } from '../types';
+import type { ProjectFile } from '../types/index.ts';
 
 export type OnDeviceFsMode = 'disconnected' | 'native' | 'opfs' | 'imported';
 
