@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LiquidOs Selfhosted Catalog",
+  "description": "Machine-readable catalog of self-hostable services for the selfhosted-discover skill. Sourced from Awesome-Selfhosted and curated for LiquidOs.",
+  "type": "object",
+  "required": ["version", "updated", "entries"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Catalog schema version"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date",
+      "description": "Last update date (YYYY-MM-DD)"
+    },
+    "source": {
+      "type": "string",
+      "description": "Primary upstream source"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description", "license", "platforms", "categories", "url"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable slug identifier"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "license": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "SPDX license identifiers preferred"
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["Docker", "Kubernetes", "bare-metal", "Nodejs", "Python", "Go", "PHP", "Rust", "other"]
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "stars": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_update": {
+            "type": "string",
+            "format": "date"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "attestation_ready": {
+            "type": "boolean",
+            "description": "Whether the service is suitable for an-nexus attestation workflows"
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": "0.1.0",
+      "updated": "2026-11-15",
+      "source": "https://awesome-selfhosted.net/",
+      "entries": [
+        {
+          "id": "actual",
+          "name": "Actual",
+          "description": "Local-first personal finance tool based on zero-sum budgeting.",
+          "license": ["MIT"],
+          "platforms": ["Docker", "Nodejs"],
+          "categories": ["Money, Budgeting & Management"],
+          "url": "https://actualbudget.com",
+          "stars": 30129,
+          "last_update": "2026-11-09",
+          "attestation_ready": true
+        },
+        {
+          "id": "adguard-home",
+          "name": "AdGuard Home",
+          "description": "User-friendly ads & trackers blocking DNS server.",
+          "license": ["GPL-3.0"],
+          "platforms": ["Docker"],
+          "categories": ["DNS"],
+          "url": "https://github.com/AdguardTeam/AdGuardHome",
+          "stars": 38301,
+          "last_update": "2026-11-09",
+          "attestation_ready": true
+        },
+        {
+          "id": "anythingllm",
+          "name": "AnythingLLM",
+          "description": "All-in-one desktop & Docker AI application with RAG, AI agents, and MCP compatibility.",
+          "license": ["MIT"],
+          "platforms": ["Docker", "Nodejs"],
+          "categories": ["Generative Artificial Intelligence (GenAI)"],
+          "url": "https://anythingllm.com",
+          "stars": 68123,
+          "last_update": "2026-11-09",
+          "attestation_ready": true
+        }
+      ]
+    }
+  ]
+}
