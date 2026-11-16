@@ -55,7 +55,20 @@ export interface Project {
 
 export interface ToolCall {
   id: string;
-  toolName: 'execute_code' | 'web_fetch' | 'math_eval' | 'create_file' | 'patch_file' | 'search_grounding' | 'generate_image' | 'vector_search';
+  toolName:
+    | 'execute_code'
+    | 'web_fetch'
+    | 'math_eval'
+    | 'create_file'
+    | 'patch_file'
+    | 'search_grounding'
+    | 'generate_image'
+    | 'vector_search'
+    | 'duckdb_query'
+    | 'lancedb_search'
+    | 'file_eval'
+    | 'control_plane_attest'
+    | 'recursive_task';
   status: 'executing' | 'success' | 'failed';
   arguments: Record<string, any>;
   result?: any;

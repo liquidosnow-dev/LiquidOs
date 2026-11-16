@@ -211,6 +211,16 @@ export const CONTROL_PLANE_AUTH_MATRIX: EndpointAuthRule[] = [
     rejectionStatuses: [400],
     description: 'Verify an Ed25519 server receipt against historical public keyring.',
   },
+  {
+    method: 'POST',
+    path: '/api/control-plane/attest',
+    minRole: 'operator',
+    workspaceScoped: true,
+    csrfAndOriginProtected: true,
+    replayProtected: true,
+    rejectionStatuses: [400, 401, 403, 409],
+    description: 'Issue signed Ed25519 attestation receipt for evaluated autonomous recursive engine cycles.',
+  },
 ];
 
 export interface ControlPlaneSessionClaims {
@@ -1561,6 +1571,146 @@ export function createAuthoritativeControlPlaneEngine(options?: {
     };
   }
 
+  function issueExecutionAttestation(params: {
+    permitId?: string | null;
+    cycleId: string;
+    stepName: string;
+    iteration: number;
+    taskIds?: string[];
+    modifiedFiles?: ProjectFile[];
+    vaultDigest?: string;
+    evaluationPassed?: boolean;
+    evaluationDiagnostics?: string[];
+    expectedEpoch?: number;
+    expectedFencingVersion?: number;
+    workspaceId?: string;
+    actor?: string;
+  }) {
+    if (!params.cycleId || !params.stepName) {
+      return {
+        ok: false as const,
+        status: 400,
+        code: 'ERR_INVALID_PAYLOAD',
+        error: 'cycleId and stepName are required for Control Plane Ed25519 attestation.',
+        linearizationSeq: state.linearizationSeq ?? 0,
+      };
+    }
+
+    if (params.evaluationPassed === false) {
+      return {
+        ok: false as const,
+        status: 400,
+        code: 'ERR_EVALUATION_FAILED',
+        error: 'Refusing Ed25519 attestation for failed file modification evaluation.',
+        linearizationSeq: state.linearizationSeq ?? 0,
+      };
+    }
+
+    const files = Array.isArray(params.modifiedFiles) ? params.modifiedFiles : [];
+    for (const file of files) {
+      const pathCheck = validateIngestPath(file?.path);
+      if (!pathCheck.ok) {
+        return {
+          ok: false as const,
+          status: 400,
+          code: 'ERR_UNSAFE_PATH',
+          error: `Attestation rejected unsafe path "${file?.path}": ${pathCheck.reason}`,
+          linearizationSeq: state.linearizationSeq ?? 0,
+        };
+      }
+      if (typeof file.content !== 'string' || file.content.includes('\u0000')) {
+        return {
+          ok: false as const,
+          status: 400,
+          code: 'ERR_BINARY_PAYLOAD',
+          error: `Attestation rejected binary/NUL payload in "${file.path}".`,
+          linearizationSeq: state.linearizationSeq ?? 0,
+        };
+      }
+    }
+
+    const authRes = authorizeOperation({
+      permitId: params.permitId,
+      scope: 'workspace_commit',
+      clientEpoch: params.expectedEpoch,
+      clientFencingVersion: params.expectedFencingVersion,
+    });
+    if (!authRes.authorized) {
+      return {
+        ok: false as const,
+        status: 403,
+        code: authRes.check.code,
+        error: authRes.check.reason,
+        linearizationSeq: authRes.linearizationSeq,
+      };
+    }
+
+    const { fileHashes, treeDigest } = computeWorkspaceFileHashes(files);
+    const reqWorkspaceId = params.workspaceId || workspaceId;
+    const attestationPayload = {
+      contract: 'AN-EVC-001',
+      cycleId: params.cycleId,
+      stepName: params.stepName,
+      iteration: params.iteration,
+      workspaceId: reqWorkspaceId,
+      permitId: params.permitId || null,
+      epoch: state.epoch,
+      fencingVersion: state.activePermit?.fencingVersion ?? state.minFencingVersion,
+      linearizationSeq: authRes.linearizationSeq,
+      taskIds: Array.isArray(params.taskIds) ? params.taskIds : [],
+      vaultDigest: params.vaultDigest || 'none',
+      evaluationPassed: true,
+      evaluationDiagnostics: Array.isArray(params.evaluationDiagnostics)
+        ? params.evaluationDiagnostics
+        : [],
+      treeDigest,
+      fileHashes,
+    };
+
+    const attestationDigest = crypto
+      .createHash('sha256')
+      .update(canonicalize(attestationPayload), 'utf8')
+      .digest('hex');
+
+    const receipt = signPayload('autonomous_cycle_attestation', {
+      ...attestationPayload,
+      attestationDigest,
+    });
+
+    ledger = recordControlPlaneAudit(
+      ledger,
+      'autonomous_cycle_attested',
+      params.cycleId,
+      params.actor || 'agent:recursive_engine',
+      {
+        stepName: params.stepName,
+        iteration: params.iteration,
+        receiptId: receipt.receiptId,
+        keyId: activeKeyId,
+        attestationDigest,
+        treeDigest,
+        vaultDigest: attestationPayload.vaultDigest,
+        fileCount: files.length,
+        linearizationSeq: authRes.linearizationSeq,
+      }
+    );
+    emitCheckpoint();
+    persistStateSnapshot();
+
+    return {
+      ok: true as const,
+      status: 200,
+      receipt,
+      attestationDigest,
+      treeDigest,
+      fileHashes,
+      linearizationSeq: authRes.linearizationSeq,
+      activeKeyId,
+      publicKeyPem,
+      state: { ...state },
+    };
+  }
+
   function getAuditSnapshot() {
     const latestCheckpoint = checkpoints.length > 0 ? checkpoints[checkpoints.length - 1] : null;
     const checkpointVerification = verifyAuditWithCheckpoint(ledger, latestCheckpoint, publicKeysById);
@@ -1592,6 +1742,7 @@ export function createAuthoritativeControlPlaneEngine(options?: {
     authorizeIngestionCommit,
     verifyUploadedFilesWatchMode,
     updateRecoveryQueue,
+    issueExecutionAttestation,
     getAuditSnapshot,
   };
 }

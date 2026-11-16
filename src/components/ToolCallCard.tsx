@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ToolCall } from '../types';
-import { ChevronDown, ChevronRight, Play, CheckCircle2, AlertCircle, Loader2, Terminal, Globe, Calculator, FileCode, Search, Image as ImageIcon, Database } from 'lucide-react';
+import { ChevronDown, ChevronRight, Play, CheckCircle2, AlertCircle, Loader2, Terminal, Globe, Calculator, FileCode, Search, Image as ImageIcon, Database, ShieldCheck, Layers, Cpu } from 'lucide-react';
 
 interface ToolCallCardProps {
   toolCall: ToolCall;
@@ -20,13 +20,21 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall, onRunInCan
         return <Calculator className="w-4 h-4 text-amber-400" />;
       case 'create_file':
       case 'patch_file':
+      case 'file_eval':
         return <FileCode className="w-4 h-4 text-purple-400" />;
       case 'search_grounding':
         return <Search className="w-4 h-4 text-blue-400" />;
       case 'generate_image':
         return <ImageIcon className="w-4 h-4 text-pink-400" />;
       case 'vector_search':
+      case 'lancedb_search':
         return <Database className="w-4 h-4 text-cyan-300" />;
+      case 'duckdb_query':
+        return <Layers className="w-4 h-4 text-amber-300" />;
+      case 'control_plane_attest':
+        return <ShieldCheck className="w-4 h-4 text-emerald-400" />;
+      case 'recursive_task':
+        return <Cpu className="w-4 h-4 text-cyan-400" />;
       default:
         return <Terminal className="w-4 h-4 text-cyan-400" />;
     }

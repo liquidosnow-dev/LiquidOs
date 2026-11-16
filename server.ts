@@ -2316,6 +2316,45 @@ app.post('/api/control-plane/verify-receipt', (req: Request, res: Response) => {
   return res.json({ valid });
 });
 
+app.post('/api/control-plane/attest', (req: Request, res: Response) => {
+  const claims = enforceControlPlaneHttpAuth(req, res, '/api/control-plane/attest');
+  if (!claims) return;
+
+  const {
+    permitId,
+    cycleId,
+    stepName,
+    iteration,
+    taskIds,
+    modifiedFiles,
+    vaultDigest,
+    evaluationPassed,
+    evaluationDiagnostics,
+    expectedEpoch,
+    expectedFencingVersion,
+    workspaceId,
+  } = req.body || {};
+
+  const result = serverControlPlane.issueExecutionAttestation({
+    permitId: typeof permitId === 'string' ? permitId : null,
+    cycleId: typeof cycleId === 'string' ? cycleId : '',
+    stepName: typeof stepName === 'string' ? stepName : '',
+    iteration: typeof iteration === 'number' ? iteration : 1,
+    taskIds: Array.isArray(taskIds) ? taskIds : [],
+    modifiedFiles: Array.isArray(modifiedFiles) ? modifiedFiles : [],
+    vaultDigest: typeof vaultDigest === 'string' ? vaultDigest : undefined,
+    evaluationPassed: typeof evaluationPassed === 'boolean' ? evaluationPassed : true,
+    evaluationDiagnostics: Array.isArray(evaluationDiagnostics) ? evaluationDiagnostics : [],
+    expectedEpoch: typeof expectedEpoch === 'number' ? expectedEpoch : undefined,
+    expectedFencingVersion:
+      typeof expectedFencingVersion === 'number' ? expectedFencingVersion : undefined,
+    workspaceId: typeof workspaceId === 'string' ? workspaceId : claims.workspaceId,
+    actor: claims.actor,
+  });
+
+  return res.status(result.status).json(result);
+});
+
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({

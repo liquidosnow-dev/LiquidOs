@@ -31,6 +31,10 @@ interface ChatStreamProps {
   files?: ProjectFile[];
   externalPrompt?: string;
   onClearExternalPrompt?: () => void;
+  autonomousMode?: boolean;
+  onToggleAutonomousMode?: () => void;
+  autonomousStatus?: string | null;
+  onStopAutonomousLoop?: () => void;
 }
 
 const PERSONA_PRESETS = [
@@ -54,6 +58,10 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
   files = [],
   externalPrompt,
   onClearExternalPrompt,
+  autonomousMode = true,
+  onToggleAutonomousMode,
+  autonomousStatus,
+  onStopAutonomousLoop,
 }) => {
   const [inputPrompt, setInputPrompt] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -337,12 +345,29 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-md">
               💧
             </div>
-            <div className="p-4 rounded-2xl glass-surface-2 text-slate-100 text-sm flex items-center gap-3">
-              <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
-              <div className="flex items-center gap-2">
-                <span>Codex is synthesizing Hono edge application & running sandbox...</span>
-                <span className="text-xs text-cyan-300 font-mono">[Reasoning Active]</span>
+            <div className="p-4 rounded-2xl glass-surface-2 text-slate-100 text-sm flex items-center justify-between gap-4 flex-1 max-w-2xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <Loader2 className="w-4 h-4 text-cyan-400 animate-spin shrink-0" />
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="truncate">
+                    {autonomousStatus || 'Codex is synthesizing edge application & running sandbox...'}
+                  </span>
+                  <span className="text-[11px] text-cyan-300 font-mono">
+                    {autonomousMode
+                      ? '[RecursiveEngine: Vault Read → Execute → Evaluate → Ed25519 Attest]'
+                      : '[Reasoning Active]'}
+                  </span>
+                </div>
               </div>
+              {autonomousMode && onStopAutonomousLoop && (
+                <button
+                  type="button"
+                  onClick={onStopAutonomousLoop}
+                  className="px-2.5 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-500 text-white text-xs font-mono shrink-0 cursor-pointer"
+                >
+                  Stop
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -418,6 +443,22 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {onToggleAutonomousMode && (
+                <button
+                  type="button"
+                  onClick={onToggleAutonomousMode}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-mono transition-colors cursor-pointer border ${
+                    autonomousMode
+                      ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-200 hover:bg-cyan-500/30'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Toggle RecursiveEngine autonomous Vault + Control Plane Ed25519 loop"
+                >
+                  <Zap className={`w-3.5 h-3.5 ${autonomousMode ? 'text-cyan-400' : 'text-slate-400'}`} />
+                  <span>{autonomousMode ? 'Auto-Loop ON' : 'Single-Shot'}</span>
+                </button>
+              )}
+
               {/* Audio Microphone STT button */}
               <button
                 type="button"
@@ -438,7 +479,7 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
                 disabled={!inputPrompt.trim() || isLoading}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 disabled:opacity-40 text-white text-xs font-semibold transition-all shadow-md active:scale-95 cursor-pointer"
               >
-                <span>Build</span>
+                <span>{autonomousMode ? 'Run Loop' : 'Build'}</span>
                 <ArrowUp className="w-3.5 h-3.5" />
               </button>
             </div>
