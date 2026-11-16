@@ -1,6 +1,6 @@
-import { Commit, CommitProvenance, Project, ProjectFile } from '../types';
-import { sha256Hex } from './securityCrypto';
-import { canonicalize } from './contractRegistry';
+import type { Commit, CommitProvenance, Project, ProjectFile } from '../types/index.ts';
+import { sha256Hex } from './securityCrypto.ts';
+import { canonicalize } from './contractRegistry.ts';
 
 export function normalizeCommitProvenance(provenance?: CommitProvenance): {
   source: CommitProvenance['source'];

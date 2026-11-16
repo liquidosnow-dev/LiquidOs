@@ -1,12 +1,12 @@
-import { AuditLedgerEntry, Commit, Project, ProjectFile, VerificationClaimLevel } from '../types';
-import { sha256Hex, appendAuditLedger } from './securityCrypto';
-import { assertSafeIntegerLiterals, canonicalize } from './contractRegistry';
+import type { AuditLedgerEntry, Commit, Project, ProjectFile, VerificationClaimLevel } from '../types/index.ts';
+import { sha256Hex, appendAuditLedger } from './securityCrypto.ts';
+import { assertSafeIntegerLiterals, canonicalize } from './contractRegistry.ts';
+import type { WritePhase } from './onDeviceFs.ts';
 import {
-  WritePhase,
   validateIngestPath,
   writeFilesToDirectoryHandle,
-} from './onDeviceFs';
-import { createCommit, verifyCommitIntegrity } from './versionControl';
+} from './onDeviceFs.ts';
+import { createCommit, verifyCommitIntegrity } from './versionControl.ts';
 
 export type GlobalMode = 'UNINITIALIZED' | 'ACTIVE' | 'RESTRICTED' | 'LOCKDOWN';
 

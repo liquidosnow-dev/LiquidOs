@@ -1,171 +1,139 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Lora:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:ital,wght@0,100..700;1,100..700&display=swap');
 @import "tailwindcss";
-@import "tw-animate-css";
-@plugin "@tailwindcss/typography";
-@custom-variant dark (&:is(.dark *));
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   THE ONLY design-tokens file. This single file owns the whole app's visual
-   identity — colors, radius, fonts, shadows, light + dark. To re-theme the app
-   (e.g. "make it a Supabase theme"), edit the token VALUES in :root and .dark
-   below. Nothing else. No second config file, no component edits, no library
-   theme layer. Values are oklch(); the @theme inline block maps them to Tailwind
-   utilities (bg-primary, text-foreground, border-border, …) in this same file.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Design tokens — the ONLY place the app's visual identity is defined.
-   Re-theme the whole app by editing the values in :root (+ .dark). No other file. ── */
-:root {
-  --background: oklch(0.17 0.012 260);
-  --foreground: oklch(0.94 0.008 250);
-  --card: oklch(0.21 0.014 260);
-  --card-foreground: oklch(0.94 0.008 250);
-  --popover: oklch(0.22 0.014 260);
-  --popover-foreground: oklch(0.94 0.008 250);
-  --primary: oklch(0.87 0.22 130);
-  --primary-foreground: oklch(0.17 0.02 260);
-  --secondary: oklch(0.26 0.014 260);
-  --secondary-foreground: oklch(0.84 0.01 250);
-  --muted: oklch(0.24 0.014 260);
-  --muted-foreground: oklch(0.65 0.014 255);
-  --accent: oklch(0.29 0.018 260);
-  --accent-foreground: oklch(0.95 0.008 250);
-  --destructive: oklch(0.62 0.21 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.32 0.015 260);
-  --input: oklch(0.29 0.015 260);
-  --ring: oklch(0.87 0.22 130);
-  --chart-1: oklch(0.87 0.22 130);
-  --chart-2: oklch(0.7 0.12 220);
-  --chart-3: oklch(0.72 0.14 60);
-  --chart-4: oklch(0.68 0.15 300);
-  --chart-5: oklch(0.7 0.16 25);
-  --sidebar: oklch(0.15 0.012 260);
-  --sidebar-foreground: oklch(0.94 0.008 250);
-  --sidebar-primary: oklch(0.87 0.22 130);
-  --sidebar-primary-foreground: oklch(0.17 0.02 260);
-  --sidebar-accent: oklch(0.25 0.015 260);
-  --sidebar-accent-foreground: oklch(0.94 0.008 250);
-  --sidebar-border: oklch(0.29 0.014 260);
-  --sidebar-ring: oklch(0.87 0.22 130);
-
-  --radius: 0.7rem;
-  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-serif: 'Lora', ui-serif, Georgia, serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --shadow-sm: 0 2px 8px oklch(0 0 0 / 0.2);
-  --shadow-md: 0 8px 24px oklch(0 0 0 / 0.24);
-  --shadow-lg: 0 16px 48px oklch(0 0 0 / 0.32);
-}
-
-.dark {
-  --background: oklch(0.2077 0.0398 265.75);
-  --foreground: oklch(0.8717 0.0093 258.34);
-  --card: oklch(0.2795 0.0368 260.03);
-  --card-foreground: oklch(0.8717 0.0093 258.34);
-  --popover: oklch(0.2795 0.0368 260.03);
-  --popover-foreground: oklch(0.8717 0.0093 258.34);
-  --primary: oklch(0.9234 0 0);
-  --primary-foreground: oklch(0.2077 0.0398 265.75);
-  --secondary: oklch(0.3351 0.0331 260.91);
-  --secondary-foreground: oklch(0.7118 0.0129 286.07);
-  --muted: oklch(0.2795 0.0368 260.03);
-  --muted-foreground: oklch(0.551 0.0234 264.36);
-  --accent: oklch(0.3729 0.0306 259.73);
-  --accent-foreground: oklch(0.7118 0.0129 286.07);
-  --destructive: oklch(0.6368 0.2078 25.33);
-  --destructive-foreground: oklch(0.2077 0.0398 265.75);
-  --border: oklch(0.4461 0.0263 256.8);
-  --input: oklch(0.4461 0.0263 256.8);
-  --ring: oklch(0.9234 0 0);
-  --chart-1: oklch(0.6733 0.1828 11.36);
-  --chart-2: oklch(0.7523 0.1554 51.7);
-  --chart-3: oklch(0.8852 0.1533 93.36);
-  --chart-4: oklch(0.7573 0.1432 158.87);
-  --chart-5: oklch(0.6418 0.1385 299.39);
-  --sidebar: oklch(0.2795 0.0368 260.03);
-  --sidebar-foreground: oklch(0.8717 0.0093 258.34);
-  --sidebar-primary: oklch(0.9234 0 0);
-  --sidebar-primary-foreground: oklch(0.2077 0.0398 265.75);
-  --sidebar-accent: oklch(0.3729 0.0306 259.73);
-  --sidebar-accent-foreground: oklch(0.7118 0.0129 286.07);
-  --sidebar-border: oklch(0.4461 0.0263 256.8);
-  --sidebar-ring: oklch(0.9234 0 0);
-}
-
-/* ── Token → utility mapping (Tailwind v4). Same file as the values above. ── */
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: var(--font-sans);
-  --font-serif: var(--font-serif);
-  --font-mono: var(--font-mono);
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
-  --shadow-lg: var(--shadow-lg);
-}
 
 @layer base {
-  * { border-color: var(--color-border); }
+  :root {
+    color-scheme: dark;
+  }
 
-  /* Full viewport chain so AppShell / Sidebar h-full + flex-1 work */
-  html { height: 100%; }
+  html,
+  body,
   #root {
     min-height: 100%;
-    min-height: 100dvh;
-    display: flex;
-    flex-direction: column;
-  }
-  body {
-    min-height: 100%;
-    min-height: 100dvh;
-    background-color: var(--color-background);
-    color: var(--color-foreground);
-    font-family: var(--font-sans);
+    height: 100%;
+    background-color: #090a0f;
+    color: #e2e8f0;
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 }
 
 @layer utilities {
-  .animate-fade-in { animation: fade-in 0.3s ease-in-out; }
-  @keyframes fade-in {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
+  .glass-surface-1 {
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
   }
+
+  .glass-surface-2 {
+    background: rgba(15, 23, 42, 0.86);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+  }
+
+  .glass-surface-3 {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.16), rgba(99, 102, 241, 0.14));
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(34, 211, 238, 0.35);
+  }
+
+  .glass-bubble-user {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.25s ease-out;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* Custom slim dark scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.45);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.65);
+}
+
+/* Minimal Prism syntax token palette for dark code blocks */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #64748b;
+}
+.token.punctuation {
+  color: #94a3b8;
+}
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #f472b6;
+}
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #34d399;
+}
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #38bdf8;
+}
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #c084fc;
+}
+.token.function,
+.token.class-name {
+  color: #60a5fa;
+}
+.token.regex,
+.token.important,
+.token.variable {
+  color: #fbbf24;
 }

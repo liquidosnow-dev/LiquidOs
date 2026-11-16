@@ -452,7 +452,7 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
                       ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-200 hover:bg-cyan-500/30'
                       : 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
                   }`}
-                  title="Toggle RecursiveEngine autonomous Vault + Control Plane Ed25519 loop"
+                  title="Route complex or multi-step requests through RecursiveEngine autonomous loop (simple queries use single-turn completion)"
                 >
                   <Zap className={`w-3.5 h-3.5 ${autonomousMode ? 'text-cyan-400' : 'text-slate-400'}`} />
                   <span>{autonomousMode ? 'Auto-Loop ON' : 'Single-Shot'}</span>

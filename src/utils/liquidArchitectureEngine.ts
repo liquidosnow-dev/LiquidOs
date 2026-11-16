@@ -9,7 +9,7 @@
  * 6. Control Surfaces & Hardware Boundary Validators
  */
 
-import {
+import type {
   DaemonType,
   IngressAction,
   EntryPointDefinition,
@@ -24,8 +24,8 @@ import {
   DualInferenceConfig,
   DaemonNotepadState,
   VerificationDisciplinesState,
-} from '../types/architecture';
-import { sha256Hex } from './securityCrypto';
+} from '../types/architecture.ts';
+import { sha256Hex } from './securityCrypto.ts';
 
 // -------------------------------------------------------------
 // 1. Ingress Shield: 39 iOS Entry Points Catalog
@@ -489,12 +489,12 @@ export const VERIFICATION_DISCIPLINES: VerificationDisciplinesState = {
 // 7. LiteRT-LM / On-Device Edge Models Catalog
 // Direct integration of model_allowlist_72dac077.json
 // -------------------------------------------------------------
-import {
+import type {
   EdgeModelDefinition,
   SourceInventoryItem,
   ConsolidatedRepoNode,
   A2ABoundaryTestResult,
-} from '../types/architecture';
+} from '../types/architecture.ts';
 
 export const LITERT_EDGE_MODELS: EdgeModelDefinition[] = [
   {

@@ -1,4 +1,4 @@
-import { AuditLedgerEntry } from '../types';
+import type { AuditLedgerEntry } from '../types/index.ts';
 
 /**
  * Fast synchronous SHA-256 hex string generator (using standard JS bitwise operations)

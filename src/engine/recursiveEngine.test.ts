@@ -11,6 +11,8 @@ import {
 import { clearVectorVault } from '../services/vectorStore';
 import { readDuckDbVault, readLanceDbVault } from '../adapters/vaultAdapters';
 import {
+  classifyAndPlanRequest,
+  decomposePromptIntoTasks,
   evaluateFileModifications,
   executeRecursiveCycle,
   runRecursiveLoop,
@@ -315,5 +317,40 @@ describe('RecursiveEngine + Vault Adapters + Control Plane Ed25519 Attestation',
     expect(result.success).toBe(false);
     expect(result.aborted).toBe(true);
     expect(result.totalTasksExecuted).toBe(0);
+  });
+
+  it('routes complex and multi-step requests through recursive_loop and keeps simple prompts single_turn', () => {
+    const simpleGreeting = classifyAndPlanRequest('Hello, what does JCS stand for?');
+    expect(simpleGreeting.route).toBe('single_turn');
+    expect(simpleGreeting.tasks).toHaveLength(0);
+
+    const simpleMath = classifyAndPlanRequest('calculate 12 * (4 + 5)');
+    expect(simpleMath.route).toBe('single_turn');
+
+    const optOut = classifyAndPlanRequest(
+      '1. Build auth handler\n2. Add unit tests\n3. Update index.html',
+      { autonomousMode: false }
+    );
+    expect(optOut.route).toBe('single_turn');
+
+    const numberedMultiStep = classifyAndPlanRequest(
+      '1. Create src/auth.ts\n2. Wire rate limiter into server.ts\n3. Add vitest security checks'
+    );
+    expect(numberedMultiStep.route).toBe('recursive_loop');
+    expect(numberedMultiStep.tasks).toHaveLength(3);
+    expect(numberedMultiStep.tasks[0].description).toContain('Create src/auth.ts');
+
+    const chainedMultiStep = classifyAndPlanRequest(
+      'Refactor src/App.tsx to add telemetry and then update index.html and config.json'
+    );
+    expect(chainedMultiStep.route).toBe('recursive_loop');
+    expect(chainedMultiStep.tasks.length).toBeGreaterThanOrEqual(2);
+
+    const singleComplexArch = classifyAndPlanRequest(
+      'Build an end-to-end Hono Cloudflare D1 API with DuckDB analytics and Ed25519 attestation verification across the workspace'
+    );
+    expect(singleComplexArch.route).toBe('recursive_loop');
+    expect(singleComplexArch.tasks).toHaveLength(2);
+    expect(decomposePromptIntoTasks('Add A; Update B; Verify C')).toHaveLength(3);
   });
 });
