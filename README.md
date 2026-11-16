@@ -27,6 +27,18 @@ Cryptographic Core          →  an-nexus
 - **Self-hosting first**: Prefer sovereign, auditable infrastructure
 - **Human ownership**: Plans and designs surface in Plannotator before implementation proceeds
 
+## Orchestration & Autonomous Workflows
+
+LiquidOS ONE does not just execute prompts; it runs bounded, deterministic workflows.
+We maintain a library of **25 core workflows** that handle everything from AST self-modification to TPM hardware attestation.
+
+Every workflow is governed by the `an-nexus` zero-trust substrate:
+- **Policy First:** IBM Praxis PPE evaluates the intent.
+- **Test Second:** Vitest ensures no regressions.
+- **Attest Last:** Ed25519 signature and audit ledger append.
+
+👉 **[Read the CodexFlow Workflow Library](docs/CODEXFLOW.md)**
+
 ## Quick Start
 
 ```bash
@@ -66,7 +78,9 @@ LiquidOs/
 │   └── LIQUIDOS_DEVELOPMENT_CONTRACT.md
 ├── SOPs/                     # LoopForge-compatible pipelines
 ├── docs/
-│   └── ARCHITECTURE.md
+│   ├── ARCHITECTURE.md
+│   ├── CODEXFLOW.md
+│   └── NEXUS_BRIDGE.md
 └── README.md
 ```
 
@@ -88,6 +102,7 @@ See [`Methodology/LIQUIDOS_DEVELOPMENT_CONTRACT.md`](Methodology/LIQUIDOS_DEVELO
 - **Architecture & Methodology**: Documented and ready for implementation
 - **Skills & Knowledge**: Scaffolded — ready for population
 - **SOPs**: Stubs ready
+- **CodexFlow**: 25-workflow orchestration library live
 
 ## License
 
