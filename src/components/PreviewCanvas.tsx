@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ProjectFile } from '../types';
-import { bundlePreviewHtml } from '../utils/toolExecutor';
+import { bundlePreviewHtml, detectPreviewRuntime } from '../utils/toolExecutor';
 import {
   Monitor,
   Tablet,
@@ -10,6 +10,7 @@ import {
   Terminal,
   Eye,
   Code,
+  Columns2,
   Cpu,
   Sliders,
   CheckCircle2,
@@ -26,12 +27,14 @@ import {
   BookOpen,
   FlaskConical,
   Database,
+  Send,
 } from 'lucide-react';
 import { runCapturePipeline } from '../workers/captureWorker';
 import { hydrateVectorVault, getVectorVaultStats } from '../services/vectorStore';
 
 export type WorkspaceTabType =
   | 'preview'
+  | 'split'
   | 'files'
   | 'contract'
   | 'code'
@@ -55,6 +58,7 @@ interface ConsoleLog {
 
 interface PreviewCanvasProps {
   files: ProjectFile[];
+  activeFilePath?: string;
   activeTab: WorkspaceTabType;
   onChangeTab: (tab: WorkspaceTabType) => void;
   renderFileExplorer?: React.ReactNode;
@@ -83,6 +87,7 @@ interface PreviewCanvasProps {
 
 export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   files,
+  activeFilePath,
   activeTab,
   onChangeTab,
   renderFileExplorer,
@@ -106,10 +111,12 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [currentRoute, setCurrentRoute] = useState('/');
   const [logs, setLogs] = useState<ConsoleLog[]>([]);
+  const [logFilter, setLogFilter] = useState<'all' | 'log' | 'warn' | 'error'>('all');
+  const [consoleCommand, setConsoleCommand] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [isConsoleDrawerOpen, setIsConsoleDrawerOpen] = useState(false);
 
-  // Inspect mode (🔍) & Visual Edit mode (✏️)
+  // Inspect mode & Visual Edit mode
   const [isInspectMode, setIsInspectMode] = useState(false);
   const [isVisualEditMode, setIsVisualEditMode] = useState(false);
   const [selectedElement, setSelectedElement] = useState<{
@@ -128,7 +135,9 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   const [vectorChunkCount, setVectorChunkCount] = useState<number>(0);
   const [isVectorizing, setIsVectorizing] = useState<boolean>(false);
 
-  const bundledHtml = bundlePreviewHtml(files);
+  const runtimeInfo = detectPreviewRuntime(files, activeFilePath);
+  const bundledHtml = bundlePreviewHtml(files, activeFilePath);
+  const isLivePreviewVisible = activeTab === 'preview' || activeTab === 'split';
 
   const captureCurrentPreviewSnapshot = async () => {
     setIsVectorizing(true);
@@ -183,10 +192,33 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   };
 
   const handleOpenNewWindow = () => {
-    const bundled = bundlePreviewHtml(files);
+    const bundled = bundlePreviewHtml(files, activeFilePath);
     const blob = new Blob([bundled], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
+  };
+
+  const handleRunConsoleEval = (e: React.FormEvent) => {
+    e.preventDefault();
+    const expr = consoleCommand.trim();
+    if (!expr) return;
+    setLogs((prev) => [
+      ...prev.slice(-99),
+      {
+        id: Math.random().toString(36).substring(2, 9),
+        level: 'log',
+        message: `> ${expr}`,
+        timestamp: Date.now(),
+      },
+    ]);
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        type: 'SANDBOX_EVAL',
+        code: expr,
+      },
+      '*'
+    );
+    setConsoleCommand('');
   };
 
   const getViewportWidthClass = () => {
@@ -217,6 +249,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         <div className="flex items-center gap-1 bg-black/30 p-1 rounded-lg border border-white/10 shrink-0 whitespace-nowrap">
           <button
             type="button"
+            data-testid="tab-preview"
             onClick={() => onChangeTab('preview')}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               activeTab === 'preview'
@@ -226,6 +259,35 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           >
             <Eye className="w-3.5 h-3.5" />
             <span>Preview</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="tab-split"
+            onClick={() => onChangeTab('split')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'split'
+                ? 'bg-gradient-to-r from-cyan-500/80 to-blue-600/80 text-white shadow-sm font-semibold border border-white/15'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            title="Split-Screen Runner: Live Code Editor & Isolated Artifact Sandbox"
+          >
+            <Columns2 className="w-3.5 h-3.5" />
+            <span>Split</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="tab-code"
+            onClick={() => onChangeTab('code')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'code'
+                ? 'bg-gradient-to-r from-cyan-500/80 to-blue-600/80 text-white shadow-sm font-semibold border border-white/15'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Code className="w-3.5 h-3.5" />
+            <span>Code</span>
           </button>
 
           <button
@@ -263,19 +325,6 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           >
             <ShieldCheck className="w-3.5 h-3.5" />
             <span className="hidden md:inline">Contract</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onChangeTab('code')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              activeTab === 'code'
-                ? 'bg-gradient-to-r from-cyan-500/80 to-blue-600/80 text-white shadow-sm font-semibold border border-white/15'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Code className="w-3.5 h-3.5" />
-            <span>Code</span>
           </button>
 
           <button
@@ -422,22 +471,25 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           </button>
         </div>
 
-        {/* Route / Address Bar (Shown in preview mode) */}
-        {activeTab === 'preview' && (
+        {/* Route / Address Bar (Shown in preview / split mode) */}
+        {isLivePreviewVisible && (
           <div className="flex-1 max-w-xs hidden xl:flex items-center gap-1.5 bg-black/30 border border-white/10 rounded-lg px-2.5 py-1 text-xs font-mono text-slate-300">
-            <span className="text-slate-500">https://app.preview</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 uppercase shrink-0">
+              {runtimeInfo.kind}
+            </span>
             <input
               type="text"
               value={currentRoute}
               onChange={(e) => setCurrentRoute(e.target.value)}
               className="bg-transparent text-cyan-300 focus:outline-none w-full"
+              title={`Active entry: ${runtimeInfo.entryPath}`}
             />
           </div>
         )}
 
         {/* Viewport, Inspect & Window controls */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {activeTab === 'preview' && (
+          {isLivePreviewVisible && (
             <>
               {/* Inspect Mode (🔍) Toggle */}
               <button
@@ -451,7 +503,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-200 font-bold shadow-sm'
                     : 'bg-black/30 border-white/10 text-slate-400 hover:text-slate-200'
                 }`}
-                title="Inspect elements mode (🔍) to point at elements"
+                title="Inspect elements mode to point at elements"
               >
                 <Search className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Inspect</span>
@@ -469,7 +521,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
                     ? 'bg-amber-500/20 border-amber-400/50 text-amber-200 font-bold shadow-sm'
                     : 'bg-black/30 border-white/10 text-slate-400 hover:text-slate-200'
                 }`}
-                title="Visual edit mode (✏️) to tweak styling directly"
+                title="Visual edit mode to tweak styling directly"
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Visual Edit</span>
@@ -511,7 +563,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
             </>
           )}
 
-          {activeTab === 'preview' && (
+          {isLivePreviewVisible && (
             <button
               type="button"
               data-testid="vectorize-snapshot-btn"
@@ -562,7 +614,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       </div>
 
       {/* Inspect Mode Banner Overlay */}
-      {activeTab === 'preview' && isInspectMode && (
+      {isLivePreviewVisible && isInspectMode && (
         <div className="bg-cyan-950/90 border-b border-cyan-800/80 px-4 py-2 text-xs flex items-center justify-between gap-3 text-cyan-200 shrink-0 animate-fadeIn">
           <div className="flex items-center gap-2">
             <Search className="w-4 h-4 text-cyan-400 animate-pulse" />
@@ -597,7 +649,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       )}
 
       {/* Visual Edit Mode Styling Bar */}
-      {activeTab === 'preview' && isVisualEditMode && (
+      {isLivePreviewVisible && isVisualEditMode && (
         <div className="bg-amber-950/90 border-b border-amber-800/80 px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-3 text-amber-200 shrink-0 animate-fadeIn">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 font-bold text-white">
@@ -649,7 +701,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       )}
 
       {/* Selected Element Inspect Card Overlay */}
-      {selectedElement && activeTab === 'preview' && isInspectMode && (
+      {selectedElement && isLivePreviewVisible && isInspectMode && (
         <div className="mx-3 mt-2 p-3 glass-surface-2 rounded-xl flex items-center justify-between gap-3 text-xs animate-fadeIn shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -703,6 +755,40 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           </div>
         )}
 
+        {activeTab === 'split' && (
+          <div
+            data-testid="split-screen-runner"
+            className="w-full h-full grid grid-cols-1 lg:grid-cols-2 min-h-0 overflow-hidden"
+          >
+            <div className="h-full min-h-0 overflow-hidden border-b lg:border-b-0 lg:border-r border-white/10 flex flex-col">
+              {renderCodeEditor}
+            </div>
+            <div className="h-full min-h-0 flex flex-col bg-slate-950/60 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-black/30 border-b border-white/10 text-[11px] font-mono text-slate-400 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Eye className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span className="text-slate-200 font-semibold truncate">{runtimeInfo.entryPath}</span>
+                </div>
+                <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 uppercase text-[10px]">
+                  {runtimeInfo.kind} sandbox
+                </span>
+              </div>
+              <div className="relative flex-1 flex items-center justify-center p-2 min-h-0">
+                <div className={`transition-all duration-200 flex justify-center ${getViewportWidthClass()}`}>
+                  <iframe
+                    key={reloadKey}
+                    ref={iframeRef}
+                    title="Codex Split-Screen Live Preview"
+                    srcDoc={bundledHtml}
+                    sandbox="allow-scripts allow-forms allow-modals"
+                    className="w-full h-full border-none rounded-lg bg-slate-900 shadow-xl"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'files' && renderFileExplorer}
 
         {activeTab === 'contract' && renderContract}
@@ -738,20 +824,37 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         {activeTab === 'tutorial' && renderTutorial}
       </div>
 
-      {/* Bottom Console Logs Drawer */}
+      {/* Bottom Interactive Console Logs Drawer */}
       {isConsoleDrawerOpen && (
-        <div className="h-44 border-t border-white/10 glass-surface-1 flex flex-col font-mono text-xs shrink-0 shadow-2xl">
-          <div className="flex items-center justify-between px-3 py-1.5 bg-black/30 border-b border-white/10 text-slate-400">
+        <div
+          data-testid="sandbox-console-drawer"
+          className="h-52 border-t border-white/10 glass-surface-1 flex flex-col font-mono text-xs shrink-0 shadow-2xl"
+        >
+          <div className="flex items-center justify-between px-3 py-1.5 bg-black/30 border-b border-white/10 text-slate-400 gap-2">
             <div className="flex items-center gap-2">
               <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="font-semibold text-slate-300">Sandbox Console Logs</span>
+              <span className="font-semibold text-slate-300">Sandbox Console</span>
               <span className="text-[11px] text-slate-500">· {logs.length} events</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              {(['all', 'log', 'warn', 'error'] as const).map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => setLogFilter(lvl)}
+                  className={`px-1.5 py-0.5 rounded text-[10px] uppercase cursor-pointer transition-colors ${
+                    logFilter === lvl
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                      : 'text-slate-500 hover:text-slate-200'
+                  }`}
+                >
+                  {lvl}
+                </button>
+              ))}
               <button
                 type="button"
                 onClick={() => setLogs([])}
-                className="hover:text-slate-200 transition-colors"
+                className="ml-2 hover:text-slate-200 transition-colors cursor-pointer"
                 title="Clear logs"
               >
                 Clear
@@ -759,7 +862,7 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               <button
                 type="button"
                 onClick={() => setIsConsoleDrawerOpen(false)}
-                className="hover:text-slate-200"
+                className="hover:text-slate-200 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -767,40 +870,69 @@ export const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1 font-mono">
-            {logs.length === 0 ? (
+            {logs.filter((l) => logFilter === 'all' || l.level === logFilter).length === 0 ? (
               <div className="text-slate-600 italic">No console logs recorded yet.</div>
             ) : (
-              logs.map((log) => (
-                <div key={log.id} className="flex items-start gap-2 py-0.5">
-                  <span className="text-slate-600 shrink-0">
-                    {new Date(log.timestamp).toLocaleTimeString()}
-                  </span>
-                  <span
-                    className={`shrink-0 uppercase text-[10px] font-bold px-1 rounded ${
-                      log.level === 'error'
-                        ? 'bg-rose-950 text-rose-400'
-                        : log.level === 'warn'
-                        ? 'bg-amber-950 text-amber-400'
-                        : 'bg-slate-800 text-cyan-400'
-                    }`}
-                  >
-                    {log.level}
-                  </span>
-                  <span
-                    className={`whitespace-pre-wrap break-all ${
-                      log.level === 'error'
-                        ? 'text-rose-300'
-                        : log.level === 'warn'
-                        ? 'text-amber-300'
-                        : 'text-slate-300'
-                    }`}
-                  >
-                    {log.message}
-                  </span>
-                </div>
-              ))
+              logs
+                .filter((l) => logFilter === 'all' || l.level === logFilter)
+                .map((log) => (
+                  <div key={log.id} className="flex items-start gap-2 py-0.5">
+                    <span className="text-slate-600 shrink-0">
+                      {new Date(log.timestamp).toLocaleTimeString()}
+                    </span>
+                    <span
+                      className={`shrink-0 uppercase text-[10px] font-bold px-1 rounded ${
+                        log.level === 'error'
+                          ? 'bg-rose-950 text-rose-400'
+                          : log.level === 'warn'
+                          ? 'bg-amber-950 text-amber-400'
+                          : 'bg-slate-800 text-cyan-400'
+                      }`}
+                    >
+                      {log.level}
+                    </span>
+                    <span
+                      className={`whitespace-pre-wrap break-all ${
+                        log.level === 'error'
+                          ? 'text-rose-300'
+                          : log.level === 'warn'
+                          ? 'text-amber-300'
+                          : 'text-slate-300'
+                      }`}
+                    >
+                      {log.message}
+                    </span>
+                  </div>
+                ))
             )}
           </div>
+
+          <form
+            onSubmit={handleRunConsoleEval}
+            className="flex items-center gap-2 px-3 py-1.5 bg-black/40 border-t border-white/10 shrink-0"
+          >
+            <span className="text-cyan-400 font-bold">&gt;</span>
+            <input
+              type="text"
+              value={consoleCommand}
+              onChange={(e) => setConsoleCommand(e.target.value)}
+              placeholder={
+                isLivePreviewVisible
+                  ? 'Evaluate JS inside isolated preview iframe (e.g. document.title)...'
+                  : 'Switch to Preview or Split mode to run sandbox JS commands'
+              }
+              disabled={!isLivePreviewVisible}
+              className="flex-1 bg-transparent text-slate-200 placeholder:text-slate-600 focus:outline-none text-xs font-mono"
+            />
+            <button
+              type="submit"
+              disabled={!isLivePreviewVisible || !consoleCommand.trim()}
+              className="px-2 py-0.5 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-[11px] flex items-center gap-1 cursor-pointer"
+            >
+              <Send className="w-3 h-3" />
+              <span>Run</span>
+            </button>
+          </form>
         </div>
       )}
     </div>

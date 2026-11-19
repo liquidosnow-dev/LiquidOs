@@ -66,5 +66,47 @@ test('bundlePreviewHtml packages files with Tailwind and console listener', () =
   assert.equal(html.includes('tailwindcss'), true);
   assert.equal(html.includes('Active Preview'), true);
   assert.equal(html.includes('SANDBOX_CONSOLE'), true);
+  assert.equal(html.includes('SANDBOX_EVAL'), true);
   assert.equal(html.includes('App ready'), true);
+});
+
+test('bundlePreviewHtml renders React TSX/JSX artifacts and SVG files inside isolated sandbox', () => {
+  const files = [
+    {
+      name: 'index.html',
+      path: 'index.html',
+      language: 'html' as const,
+      content: '<div>Vanilla Host</div>',
+      lastModified: Date.now(),
+    },
+    {
+      name: 'Widget.tsx',
+      path: 'src/Widget.tsx',
+      language: 'typescript' as const,
+      content: `import React, { useState } from 'react';
+export default function Widget() {
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount(count + 1)}>{count}</button>;
+}`,
+      lastModified: Date.now(),
+    },
+    {
+      name: 'logo.svg',
+      path: 'assets/logo.svg',
+      language: 'svg' as const,
+      content: '<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="24" fill="#22d3ee"/></svg>',
+      lastModified: Date.now(),
+    },
+  ];
+
+  const reactHtml = bundlePreviewHtml(files, 'src/Widget.tsx');
+  assert.equal(reactHtml.includes('babel.min.js'), true);
+  assert.equal(reactHtml.includes('ReactDOM.createRoot'), true);
+  assert.equal(reactHtml.includes('__PreviewErrorBoundary'), true);
+  assert.equal(reactHtml.includes('SANDBOX_CONSOLE'), true);
+
+  const svgHtml = bundlePreviewHtml(files, 'assets/logo.svg');
+  assert.equal(svgHtml.includes('<circle cx="32" cy="32" r="24" fill="#22d3ee"/>'), true);
+  assert.equal(svgHtml.includes('svg-stage'), true);
+  assert.equal(svgHtml.includes('SANDBOX_CONSOLE'), true);
 });

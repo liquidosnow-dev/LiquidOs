@@ -17,6 +17,8 @@ import {
   BookOpen,
   Smartphone,
   Activity,
+  Brain,
+  Wrench,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 
@@ -148,10 +150,11 @@ export const Header: React.FC<HeaderProps> = ({
 
         <div className="h-4 w-px bg-slate-800 hidden md:block shrink-0" />
 
-        {/* Model Selector Dropdown */}
+        {/* Multi-Model Selector Dropdown with Codex Capability Badges */}
         <div className="relative shrink-0">
           <button
             type="button"
+            data-testid="model-selector-trigger"
             onClick={() => {
               setIsModelDropdownOpen((v) => !v);
               setIsArchitectureMenuOpen(false);
@@ -161,13 +164,37 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
             <span className="font-semibold text-slate-100">{selectedModel.name}</span>
+            <span className="hidden md:inline-flex items-center gap-1 pl-1 border-l border-white/10">
+              {selectedModel.supportsTools && (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-400/30 text-[10px] font-mono text-cyan-300"
+                  title="Supports Codex Tool Calling"
+                >
+                  <Wrench className="w-2.5 h-2.5" />
+                  <span>Tools</span>
+                </span>
+              )}
+              {selectedModel.supportsReasoning && (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-500/15 border border-violet-400/30 text-[10px] font-mono text-violet-300"
+                  title="Supports Deep Reasoning"
+                >
+                  <Brain className="w-2.5 h-2.5" />
+                  <span>Reason</span>
+                </span>
+              )}
+            </span>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           </button>
 
           {isModelDropdownOpen && (
-            <div className="absolute left-0 mt-1.5 w-80 glass-surface-2 rounded-xl p-2 z-50 space-y-1 max-h-[75vh] overflow-y-auto">
-              <div className="px-2.5 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Select Reasoning &amp; Tool Model
+            <div
+              data-testid="model-selector-menu"
+              className="absolute left-0 mt-1.5 w-96 max-w-[92vw] glass-surface-2 rounded-xl p-2 z-50 space-y-1 max-h-[75vh] overflow-y-auto shadow-2xl"
+            >
+              <div className="px-2.5 py-1 flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <span>Codex Multi-Model Selector</span>
+                <span className="font-mono text-[10px] text-cyan-400 normal-case">Puter &amp; Edge Ready</span>
               </div>
               {availableModels.map((model) => {
                 const isSelected = model.id === selectedModel.id;
@@ -175,6 +202,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <button
                     key={model.id}
                     type="button"
+                    data-testid={`model-option-${model.id}`}
                     onClick={() => {
                       onSelectModel(model);
                       setIsModelDropdownOpen(false);
@@ -185,7 +213,7 @@ export const Header: React.FC<HeaderProps> = ({
                         : 'hover:bg-slate-800/70 text-slate-300 border border-transparent'
                     }`}
                   >
-                    <div className="space-y-1 min-w-0 pr-2">
+                    <div className="space-y-1.5 min-w-0 pr-2">
                       <div className="flex items-center gap-2 text-xs">
                         <span className="font-bold text-white truncate">{model.name}</span>
                         <span className="text-[11px] font-mono text-slate-400 shrink-0">
@@ -193,8 +221,40 @@ export const Header: React.FC<HeaderProps> = ({
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400 line-clamp-1">{model.description}</p>
-                      <div className="text-[10px] font-mono text-cyan-400">
-                        {model.badges.join(' · ')}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        <span
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-mono ${
+                            model.supportsTools
+                              ? 'bg-cyan-500/15 border-cyan-500/35 text-cyan-300'
+                              : 'bg-slate-900/70 border-slate-700/70 text-slate-500'
+                          }`}
+                        >
+                          <Wrench className="w-2.5 h-2.5" />
+                          <span>{model.supportsTools ? 'Tool Calling' : 'No Tools'}</span>
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-mono ${
+                            model.supportsReasoning
+                              ? 'bg-violet-500/15 border-violet-500/35 text-violet-300'
+                              : 'bg-slate-900/70 border-slate-700/70 text-slate-500'
+                          }`}
+                        >
+                          <Brain className="w-2.5 h-2.5" />
+                          <span>{model.supportsReasoning ? 'Reasoning' : 'Standard'}</span>
+                        </span>
+                        {model.supportsPuter && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded border border-emerald-500/35 bg-emerald-500/10 text-[10px] font-mono text-emerald-300">
+                            Puter
+                          </span>
+                        )}
+                        {model.badges.slice(0, 2).map((badge) => (
+                          <span
+                            key={badge}
+                            className="text-[10px] font-mono text-slate-400"
+                          >
+                            · {badge}
+                          </span>
+                        ))}
                       </div>
                     </div>
                     {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />}

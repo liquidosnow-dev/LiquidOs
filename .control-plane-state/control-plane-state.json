@@ -746,6 +746,54 @@
       },
       "previousHash": "5730e02481338e715e3c1018b34cb74428e029b320bd1c0f730994d29103dedb",
       "hash": "b6cb9ecd6abd93daa09e66f7ffad8e620ff97bc86d9eb81a29bf87772d271fee"
+    },
+    {
+      "index": 40,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1795038430273,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 40,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "b6cb9ecd6abd93daa09e66f7ffad8e620ff97bc86d9eb81a29bf87772d271fee",
+      "hash": "2c68d1ed8081e276932dd3582c66a580c3512257e4769bad484e97e89da3cd72"
+    },
+    {
+      "index": 41,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1795038737149,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 41,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "2c68d1ed8081e276932dd3582c66a580c3512257e4769bad484e97e89da3cd72",
+      "hash": "2b87b77443b1d5bb79f39d8baec036f5e8430f315e08404e823a21f6c7940502"
+    },
+    {
+      "index": 42,
+      "action": "control_plane_restarted",
+      "entityId": "key_6d18b20aed15",
+      "author": "system",
+      "timestamp": 1795038746442,
+      "data": {
+        "workspaceId": "ws_unified_one",
+        "mode": "ACTIVE",
+        "epoch": 1,
+        "recoveredEntries": 42,
+        "recoveryQueueCount": 0
+      },
+      "previousHash": "2b87b77443b1d5bb79f39d8baec036f5e8430f315e08404e823a21f6c7940502",
+      "hash": "cc9861104473ad93d2a01b7629f20175d9006b57cbbbeb15007805c6fd7078fe"
     }
   ],
   "checkpoints": [
@@ -1148,6 +1196,36 @@
       "keyId": "key_6d18b20aed15",
       "canonicalPayload": "{\"checkpointSeq\":40,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":40,\"timestamp\":1794824356259,\"tipHash\":\"b6cb9ecd6abd93daa09e66f7ffad8e620ff97bc86d9eb81a29bf87772d271fee\",\"tipIndex\":39}",
       "signature": "WpC/TwSLnxhkIs/xZ75WWw5k/O5FG65zN3xYJweLTI+K0CCaLV2sXoPw/LT40bAGcgzksBt7xUN6j8p7mznlAQ=="
+    },
+    {
+      "checkpointSeq": 41,
+      "ledgerLength": 41,
+      "tipIndex": 40,
+      "tipHash": "2c68d1ed8081e276932dd3582c66a580c3512257e4769bad484e97e89da3cd72",
+      "timestamp": 1795038430273,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":41,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":41,\"timestamp\":1795038430273,\"tipHash\":\"2c68d1ed8081e276932dd3582c66a580c3512257e4769bad484e97e89da3cd72\",\"tipIndex\":40}",
+      "signature": "FV2+0ZQuNEqDwVA78DLnXSEL1GiJRuzX3Htsm8XZ3or8xy58N8EgTCfYGudgc5JQRW/fER2tlC9N8LRfGxK5DQ=="
+    },
+    {
+      "checkpointSeq": 42,
+      "ledgerLength": 42,
+      "tipIndex": 41,
+      "tipHash": "2b87b77443b1d5bb79f39d8baec036f5e8430f315e08404e823a21f6c7940502",
+      "timestamp": 1795038737150,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":42,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":42,\"timestamp\":1795038737150,\"tipHash\":\"2b87b77443b1d5bb79f39d8baec036f5e8430f315e08404e823a21f6c7940502\",\"tipIndex\":41}",
+      "signature": "EozrlH6ssGBQXsBcgEHWJR92qtit2hLyjgk9H/ujSieYbOMIxG9r28vOrVHB1ZI6WnSroVkSJQ0LOs8yaXWADw=="
+    },
+    {
+      "checkpointSeq": 43,
+      "ledgerLength": 43,
+      "tipIndex": 42,
+      "tipHash": "cc9861104473ad93d2a01b7629f20175d9006b57cbbbeb15007805c6fd7078fe",
+      "timestamp": 1795038746445,
+      "keyId": "key_6d18b20aed15",
+      "canonicalPayload": "{\"checkpointSeq\":43,\"contract\":\"AN-EVC-001\",\"keyId\":\"key_6d18b20aed15\",\"ledgerLength\":43,\"timestamp\":1795038746445,\"tipHash\":\"cc9861104473ad93d2a01b7629f20175d9006b57cbbbeb15007805c6fd7078fe\",\"tipIndex\":42}",
+      "signature": "H1757R6B2jS1UPd5NlCj1rlMPAe5YGqcV9nzHUF96OrgWmkNRcnJVSepx6RyOtPqCGAu7F93vuOwaRA7SFPWAg=="
     }
   ],
   "recoveryQueuePaths": [],

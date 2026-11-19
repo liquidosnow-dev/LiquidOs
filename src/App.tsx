@@ -11,6 +11,7 @@ import { hydrateVectorVault, similaritySearch } from './services/vectorStore';
 import { generateDeterministicEmbedding } from './services/snapshotPipeline';
 import { createCommit, rollbackToCommit, verifyCommitIntegrity } from './utils/versionControl';
 import { extractFilesFromResponse, safeEvaluateMath } from './utils/toolExecutor';
+import { runCodexPuterChat } from './utils/codexToolEngine';
 import {
   FileModification,
   classifyAndPlanRequest,
@@ -139,6 +140,8 @@ const AVAILABLE_MODELS: ModelOption[] = [
     supportsReasoning: true,
     supportsVision: true,
     supportsThinkingHigh: true,
+    supportsPuter: true,
+    puterModelId: 'claude-3-7-sonnet',
     description: 'Puter-supported hybrid model for complex software architecture and tool chains.',
   },
   {
@@ -150,18 +153,35 @@ const AVAILABLE_MODELS: ModelOption[] = [
     supportsReasoning: false,
     supportsVision: true,
     supportsThinkingHigh: false,
-    description: 'Flagship multimodal engine with high tool execution reliability.',
+    supportsPuter: true,
+    puterModelId: 'gpt-4o',
+    description: 'Puter-supported flagship multimodal engine with high tool execution reliability.',
   },
   {
     id: 'deepseek-reasoner',
-    name: 'DeepSeek Reasoner R1',
+    name: 'DeepSeek Reasoner',
     provider: 'DeepSeek',
     badges: ['Reasoning', 'Math'],
     supportsTools: false,
     supportsReasoning: true,
     supportsVision: false,
     supportsThinkingHigh: true,
-    description: 'Open-weights reasoning model specializing in mathematical proofs and code verification.',
+    supportsPuter: true,
+    puterModelId: 'deepseek-reasoner',
+    description: 'Puter-supported reasoning model specializing in mathematical proofs and code verification.',
+  },
+  {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    provider: 'Google',
+    badges: ['Multimodal', 'Tools'],
+    supportsTools: true,
+    supportsReasoning: true,
+    supportsVision: true,
+    supportsThinkingHigh: false,
+    supportsPuter: true,
+    puterModelId: 'gemini-2.0-flash',
+    description: 'Puter-supported low-latency multimodal model with native function and tool calling.',
   },
   {
     id: 'embeddinggemma-2',
@@ -1704,42 +1724,49 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     setRightPanelTab('preview');
   };
 
-  // Apply all extracted files to workspace
+  // Apply all extracted or tool-created files to workspace
   const handleApplyAllFiles = (files: { path: string; content: string }[]) => {
-    let updatedFiles = [...project.files];
-    for (const f of files) {
-      const idx = updatedFiles.findIndex(item => item.path === f.path || item.name === f.path);
-      if (idx >= 0) {
-        updatedFiles[idx] = { ...updatedFiles[idx], content: f.content, lastModified: Date.now() };
-      } else {
-        const ext = f.path.split('.').pop() || 'html';
-        updatedFiles.push({
-          name: f.path.split('/').pop() || f.path,
-          path: f.path,
-          language: ext === 'css' ? 'css' : ext === 'js' ? 'javascript' : 'html',
-          content: f.content,
-          lastModified: Date.now(),
-        });
+    if (files.length === 0) return;
+
+    setProject((prev) => {
+      const updatedFiles = [...prev.files];
+      for (const f of files) {
+        const idx = updatedFiles.findIndex(item => item.path === f.path || item.name === f.path);
+        if (idx >= 0) {
+          updatedFiles[idx] = {
+            ...updatedFiles[idx],
+            language: inferLanguageFromPath(f.path),
+            content: f.content,
+            lastModified: Date.now(),
+          };
+        } else {
+          updatedFiles.push({
+            name: f.path.split('/').pop() || f.path,
+            path: f.path,
+            language: inferLanguageFromPath(f.path),
+            content: f.content,
+            lastModified: Date.now(),
+          });
+        }
       }
-    }
 
-    const { project: commitProj } = createCommit(
-      {
-        ...project,
-        files: updatedFiles,
-      },
-      `Applied Codex synthesis (${files.length} files)`
-    );
+      const { project: commitProj } = createCommit(
+        {
+          ...prev,
+          files: updatedFiles,
+        },
+        `Applied Codex synthesis (${files.length} files)`
+      );
+      return commitProj;
+    });
 
-    setProject(commitProj);
-    if (files.length > 0) {
-      setLastModifiedFile({
-        path: files.length === 1 ? files[0].path : `${files.length} files`,
-        action: 'apply',
-        timestamp: Date.now(),
-      });
-    }
-    setRightPanelTab('preview');
+    setActiveFilePath(files[0].path);
+    setLastModifiedFile({
+      path: files.length === 1 ? files[0].path : `${files.length} files`,
+      action: 'apply',
+      timestamp: Date.now(),
+    });
+    setRightPanelTab((current) => (current === 'split' ? 'split' : 'preview'));
   };
 
   // Run snippet directly in Canvas
@@ -1951,36 +1978,7 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
         return;
       }
 
-      // 1. Check for client-side tool calling (e.g. math evaluation or fast execution)
-      const mathMatch = promptText.match(/(?:calculate|math|eval|compute)\s+([0-9+\-*/().,%^ \t\neE]+)/i);
-
-      if (mathMatch) {
-        const expr = mathMatch[1];
-        const mathRes = safeEvaluateMath(expr);
-        toolCalls.push({
-          id: 'tc_' + Math.random().toString(36).substring(2, 8),
-          toolName: 'math_eval',
-          status: mathRes.success ? 'success' : 'failed',
-          arguments: { expression: expr },
-          result: mathRes.result,
-          error: mathRes.error,
-          executionTimeMs: 4,
-          timestamp: Date.now(),
-        });
-      }
-
-      // Add tool call for code execution or schema synthesis
-      toolCalls.push({
-        id: 'tc_' + Math.random().toString(36).substring(2, 8),
-        toolName: 'execute_code',
-        status: 'success',
-        executionTimeMs: 38,
-        arguments: { language: 'javascript', code: `compileSandbox({ model: "${selectedModel.id}", quality: "${settings.buildQuality}" })` },
-        result: { sandboxId: 'sbx_liquid_ok', status: 'VERIFIED' },
-        timestamp: Date.now(),
-      });
-
-      // 1b. Query local Sovereign Vector Vault for live snapshot context
+      // 1. Query local Sovereign Vector Vault for live snapshot context
       await hydrateVectorVault();
       const queryVec = generateDeterministicEmbedding(promptText);
       const vectorHits = similaritySearch(queryVec, 4).filter((hit) => hit.similarity > 0.05);
@@ -2004,31 +2002,24 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
         });
       }
 
-      // 2. Call server endpoint /api/ai/chat
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...messages, userMsg],
-          model: selectedModel.id,
-          persona,
-          settings,
-          vectorContext: vectorHits.map((h) => ({
-            url: h.url,
-            content: h.content,
-            similarity: h.similarity,
-          })),
-        }),
+      // 2. Execute Codex Tool-Calling Engine (Puter SDK puter.ai.chat + /api/tools/* + /api/ai/chat fallback)
+      const codexResult = await runCodexPuterChat({
+        promptText,
+        history: messages,
+        selectedModel,
+        persona,
+        settings,
+        workspaceFiles: project.files,
+        vectorHits: vectorHits.map((h) => ({
+          url: h.url,
+          content: h.content,
+          similarity: h.similarity,
+        })),
+        existingToolCalls: toolCalls,
+        onCreateFile: (createdFile) => {
+          handleApplyAllFiles([{ path: createdFile.path, content: createdFile.content }]);
+        },
       });
-
-      const data = await response.json();
-      const replyText = data.text || 'Application changes synthesized.';
-
-      // Extract generated files and auto-apply if quick edits enabled
-      const { files: generatedFiles } = extractFilesFromResponse(replyText);
-      if (generatedFiles.length > 0) {
-        handleApplyAllFiles(generatedFiles);
-      }
 
       const assistantMsg: ChatMessage = {
         id: Math.random().toString(36).substring(2, 9),
@@ -2036,15 +2027,16 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
         model: selectedModel.name,
         persona,
         timestamp: Date.now(),
-        content: replyText,
-        toolCalls,
+        content: codexResult.replyText,
+        toolCalls: codexResult.toolCalls,
+        appliedToProject: codexResult.generatedFiles.length > 0,
       };
 
       setMessages(prev => [...prev, assistantMsg]);
       trackInteraction(
         promptText,
-        toolCalls.map(tc => tc.toolName),
-        response.ok
+        codexResult.toolCalls.map(tc => tc.toolName),
+        true
       );
     } catch (err: any) {
       setMessages(prev => [
@@ -2252,6 +2244,7 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
         }`}>
           <PreviewCanvas
             files={project.files}
+            activeFilePath={activeFilePath}
             activeTab={rightPanelTab}
             onChangeTab={setRightPanelTab}
             watchMode={watchMode}
