@@ -235,6 +235,7 @@ export function inferLanguageFromPath(filePath: string): ProjectFile['language']
   if (ext === 'css' || ext === 'scss') return 'css';
   if (ext === 'json' || ext === 'jsonc') return 'json';
   if (ext === 'md' || ext === 'mdx') return 'markdown';
+  if (ext === 'svg') return 'svg';
   if (ext === 'html' || ext === 'htm') return 'html';
   return 'typescript';
 }

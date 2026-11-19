@@ -1,7 +1,7 @@
 export interface ProjectFile {
   name: string;
   path: string;
-  language: 'html' | 'javascript' | 'typescript' | 'python' | 'css' | 'json' | 'markdown';
+  language: 'html' | 'javascript' | 'typescript' | 'python' | 'css' | 'json' | 'markdown' | 'svg';
   content: string;
   lastModified: number;
 }
@@ -97,6 +97,8 @@ export interface ModelOption {
   supportsReasoning: boolean;
   supportsVision: boolean;
   supportsThinkingHigh: boolean;
+  supportsPuter?: boolean;
+  puterModelId?: string;
   description: string;
 }
 

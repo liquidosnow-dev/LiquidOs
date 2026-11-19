@@ -10,6 +10,9 @@ dotenv.config();
 import fs from 'fs';
 import zlib from 'zlib';
 import crypto from 'crypto';
+import vm from 'node:vm';
+import net from 'node:net';
+import dns from 'node:dns/promises';
 import { spawnSync, spawn } from 'child_process';
 
 import {
@@ -91,66 +94,213 @@ function getAiClient() {
   });
 }
 
-// 1. Tool execution endpoint (Safe JS sandbox & Math)
+function isBlockedPrivateOrLoopbackIp(ip: string): boolean {
+  const normalized = ip.trim().toLowerCase();
+  if (!normalized) return true;
+  if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1' || normalized === '::') return true;
+  if (normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80:')) {
+    return true;
+  }
+  const v4MappedMatch = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  const targetV4 = v4MappedMatch ? v4MappedMatch[1] : normalized;
+  if (net.isIPv4(targetV4)) {
+    const parts = targetV4.split('.').map((n) => parseInt(n, 10));
+    if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return true;
+    const [a, b] = parts;
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+  }
+  return false;
+}
+
+async function assertSafePublicHttpUrl(rawUrl: string): Promise<URL> {
+  const parsed = new URL(rawUrl);
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Only http and https protocols are allowed');
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('URLs with embedded credentials are not allowed');
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal')
+  ) {
+    throw new Error(`Blocked internal/loopback hostname: ${host}`);
+  }
+  if (net.isIP(host)) {
+    if (isBlockedPrivateOrLoopbackIp(host)) {
+      throw new Error(`Blocked private or loopback IP address: ${host}`);
+    }
+    return parsed;
+  }
+  try {
+    const records = await dns.lookup(host, { all: true });
+    for (const record of records) {
+      if (isBlockedPrivateOrLoopbackIp(record.address)) {
+        throw new Error(`Resolved host ${host} points to a private/loopback IP`);
+      }
+    }
+  } catch (err: any) {
+    if (String(err?.message || '').includes('Blocked') || String(err?.message || '').includes('Resolved host')) {
+      throw err;
+    }
+    // If DNS resolution fails synchronously in sandboxed network, fetch() below will report network error
+  }
+  return parsed;
+}
+
+// 1. Tool execution endpoint (Isolated node:vm JS sandbox, Python 3 subprocess & Math)
 app.post('/api/tools/execute', async (req: Request, res: Response) => {
-  const { code, language } = req.body;
-  if (!code) {
-    return res.status(400).json({ error: 'Code is required' });
+  const { code, language = 'javascript' } = req.body || {};
+  if (!code || typeof code !== 'string') {
+    return res.status(400).json({ success: false, error: 'Code is required' });
   }
 
+  const normalizedLang = String(language).trim().toLowerCase();
   const logs: string[] = [];
   const start = Date.now();
 
   try {
-    if (language === 'javascript' || language === 'js') {
-      // Create isolated execution context
-      const fakeConsole = {
-        log: (...args: any[]) => logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')),
-        info: (...args: any[]) => logs.push('[INFO] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')),
-        warn: (...args: any[]) => logs.push('[WARN] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')),
-        error: (...args: any[]) => logs.push('[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')),
+    if (normalizedLang === 'javascript' || normalizedLang === 'js') {
+      const formatArg = (a: any): string => {
+        if (typeof a === 'string') return a;
+        try {
+          return typeof a === 'object' ? JSON.stringify(a) : String(a);
+        } catch {
+          return String(a);
+        }
       };
 
-      // Safe evaluation with timeout
-      const fn = new Function('console', 'Math', 'Date', `
-        "use strict";
-        try {
-          ${code}
-        } catch (err) {
-          console.error(err.message || String(err));
-          throw err;
-        }
-      `);
+      const sandboxConsole = {
+        log: (...args: any[]) => logs.push(args.map(formatArg).join(' ')),
+        info: (...args: any[]) => logs.push('[INFO] ' + args.map(formatArg).join(' ')),
+        warn: (...args: any[]) => logs.push('[WARN] ' + args.map(formatArg).join(' ')),
+        error: (...args: any[]) => logs.push('[ERROR] ' + args.map(formatArg).join(' ')),
+      };
 
-      const result = fn(fakeConsole, Math, Date);
+      const context = vm.createContext(
+        {
+          console: sandboxConsole,
+          Math,
+          Date,
+          JSON,
+          Array,
+          Object,
+          Number,
+          String,
+          Boolean,
+          Map,
+          Set,
+          RegExp,
+          parseInt,
+          parseFloat,
+          isNaN,
+          isFinite,
+        },
+        { codeGeneration: { strings: false, wasm: false } }
+      );
+
+      const wrappedCode = `"use strict";\n(() => {\n${code}\n})();`;
+      const script = new vm.Script(wrappedCode, { filename: 'codex-sandbox.js' });
+      const result = script.runInContext(context, { timeout: 2000 });
       const executionTimeMs = Date.now() - start;
 
       return res.json({
         success: true,
-        result: result !== undefined ? String(result) : (logs.length > 0 ? logs.join('\n') : 'Execution completed successfully'),
+        runtime: 'node:vm',
+        result:
+          result !== undefined
+            ? typeof result === 'object'
+              ? JSON.stringify(result)
+              : String(result)
+            : logs.length > 0
+            ? logs.join('\n')
+            : 'Execution completed successfully',
         logs,
         executionTimeMs,
       });
-    } else if (language === 'math') {
-      // Safe math evaluator
-      const cleanExpr = String(code).replace(/[^0-9+\-*/().,%^ \t\neE]/g, '');
-      const val = Function(`"use strict"; return (${cleanExpr})`)();
+    } else if (normalizedLang === 'math') {
+      const sanitized = String(code).trim();
+      if (!/^[0-9+\-*/().,%^ \t\neE]+$/.test(sanitized)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Expression contains disallowed characters',
+          logs,
+          executionTimeMs: Date.now() - start,
+        });
+      }
+      const normalized = sanitized.replace(/\^/g, '**');
+      const val = vm.runInNewContext(`"use strict"; (${normalized})`, Object.create(null), {
+        timeout: 500,
+      });
+      if (typeof val !== 'number' || !Number.isFinite(val)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Evaluation did not produce a finite number',
+          logs,
+          executionTimeMs: Date.now() - start,
+        });
+      }
       return res.json({
         success: true,
-        result: Number(val),
+        runtime: 'math-vm',
+        result: val,
+        logs: [`${sanitized} = ${val}`],
         executionTimeMs: Date.now() - start,
       });
-    } else if (language === 'python') {
-      // Python sandbox simulation
+    } else if (normalizedLang === 'python' || normalizedLang === 'py') {
+      const proc = spawnSync('python3', ['-I', '-c', code], {
+        encoding: 'utf8',
+        timeout: 4000,
+        maxBuffer: 256 * 1024,
+        env: {
+          PATH: process.env.PATH || '/usr/bin:/bin',
+          PYTHONDONTWRITEBYTECODE: '1',
+        },
+      });
+
+      const executionTimeMs = Date.now() - start;
+      const stdout = (proc.stdout || '').trim();
+      const stderr = (proc.stderr || '').trim();
+      if (stdout) {
+        logs.push(...stdout.split(/\r?\n/));
+      }
+      if (stderr) {
+        logs.push(...stderr.split(/\r?\n/).map((line) => `[STDERR] ${line}`));
+      }
+
+      if (proc.error) {
+        return res.json({
+          success: false,
+          runtime: 'python3',
+          error: proc.error.message || 'Python execution failed',
+          logs,
+          executionTimeMs,
+        });
+      }
+
+      const exitCode = typeof proc.status === 'number' ? proc.status : 1;
       return res.json({
-        success: true,
-        result: `[Python Sandbox Output]\nExecuting:\n${code.slice(0, 100)}...\n>>> Output: Matrix/DataFrame computed successfully. Status: 0`,
-        logs: ['[PyPy3 Runtime] Executed in 18ms'],
-        executionTimeMs: Date.now() - start,
+        success: exitCode === 0,
+        runtime: 'python3',
+        exitCode,
+        result:
+          exitCode === 0
+            ? stdout || 'Python execution completed (no stdout)'
+            : stderr || `Python exited with code ${exitCode}`,
+        error: exitCode !== 0 ? stderr || `Python exited with code ${exitCode}` : undefined,
+        logs,
+        executionTimeMs,
       });
     }
 
-    return res.status(400).json({ error: `Unsupported language: ${language}` });
+    return res.status(400).json({ success: false, error: `Unsupported language: ${language}` });
   } catch (err: any) {
     return res.json({
       success: false,
@@ -161,41 +311,55 @@ app.post('/api/tools/execute', async (req: Request, res: Response) => {
   }
 });
 
-// 2. Web Fetch Tool Endpoint
+// 2. Web Fetch Tool Endpoint (with SSRF protection)
 app.post('/api/tools/fetch', async (req: Request, res: Response) => {
-  const { url } = req.body;
-  if (!url) {
-    return res.status(400).json({ error: 'URL is required' });
+  const { url } = req.body || {};
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ success: false, error: 'URL is required' });
   }
 
   try {
-    const parsed = new URL(url);
-    // Basic domain validation
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      return res.status(400).json({ error: 'Only http and https protocols are allowed' });
-    }
-
-    const response = await fetch(url, {
+    const parsed = await assertSafePublicHttpUrl(url);
+    const response = await fetch(parsed.toString(), {
       headers: {
         'User-Agent': 'Codex-AppBuilder-Fetcher/1.0',
       },
       signal: AbortSignal.timeout(6000),
     });
 
-    const contentType = response.headers.get('content-type') || '';
+    const contentType = response.headers.get('content-type') || 'text/plain';
     if (contentType.includes('application/json')) {
       const data = await response.json();
-      return res.json({ success: true, contentType: 'json', data });
+      return res.json({
+        success: response.ok,
+        status: response.status,
+        url: parsed.toString(),
+        contentType: 'json',
+        data,
+      });
     } else {
       const text = await response.text();
-      // Truncate if huge
       const snippet = text.slice(0, 15000);
-      return res.json({ success: true, contentType: 'text/html', data: snippet, length: text.length });
+      return res.json({
+        success: response.ok,
+        status: response.status,
+        url: parsed.toString(),
+        contentType: contentType.split(';')[0] || 'text/html',
+        data: snippet,
+        length: text.length,
+      });
     }
   } catch (err: any) {
-    return res.json({
+    const msg = err?.message || String(err);
+    const isBlocked =
+      msg.includes('Only http') ||
+      msg.includes('Blocked') ||
+      msg.includes('Resolved host') ||
+      msg.includes('embedded credentials') ||
+      err?.name === 'TypeError';
+    return res.status(isBlocked ? 400 : 200).json({
       success: false,
-      error: `Failed to fetch URL: ${err.message}`,
+      error: `Failed to fetch URL: ${msg}`,
     });
   }
 });
@@ -228,7 +392,9 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
     try {
       // Map requested model to allowed names
       let targetModel = 'gemini-3.8-flash';
-      if (model.includes('argon') || model.includes('gemini-4') || model.includes('claude-3.7') || model.includes('deepseek')) {
+      if (model.includes('gemini-2.0-flash')) {
+        targetModel = 'gemini-2.0-flash';
+      } else if (model.includes('argon') || model.includes('gemini-4') || model.includes('claude-3.7') || model.includes('deepseek')) {
         targetModel = 'gemini-4-argon';
       } else if (model.includes('lite')) {
         targetModel = 'gemini-3.1-flash-lite';
