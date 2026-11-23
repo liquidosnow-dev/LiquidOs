@@ -6,9 +6,18 @@ description = "Fail-closed VDBE authorizer and hardened read-only database handl
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/liquidosnow-dev/LiquidOs"
 
+[lib]
+name = "an_nexus_sqlite"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+python = ["pyo3"]
+
 [dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }
 thiserror = "1.0"
+pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.10"
