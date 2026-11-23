@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://liquidos.dev/schemas/pva_001.schema.json",
+  "title": "PVA-001 Production Verification Attestation",
+  "description": "Attestation that a production artifact or process step has passed required verification gates.",
+  "type": "object",
+  "required": ["attestation_id", "schema", "subject", "gates_passed", "timestamp_utc", "signer_key_id", "signature"],
+  "properties": {
+    "attestation_id": { "type": "string", "format": "uuid" },
+    "schema": { "type": "string", "const": "PVA-001" },
+    "subject": {
+      "type": "object",
+      "required": ["artifact_identifier", "sha256"],
+      "properties": {
+        "artifact_identifier": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "size_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "gates_passed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "signer_key_id": { "type": "string" },
+    "signature": { "type": "string" },
+    "limitations": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

@@ -1,7 +1,10 @@
 # LiquidOs Architecture
 
-**Version**: 2026-11-15  
+**Version**: 2026-11-23  
 **Status**: Ready for implementation
+
+> **Substrate Foundation**  
+> The 10-layer agentic architecture operates strictly on top of the Atomic Nexus Sovereign Substrate (`docs/SOVEREIGN_SUBSTRATE.md`). All higher-layer capabilities—including skills, evaluations, Plannotator iterations, and LoopForge SOPs—are bound by non-bypassable substrate invariants: Rule S4 AST query gates, kernel socket identity verification, RFC 8785 JCS byte parity, and GLOBAL-MODE-001 governance fencing.
 
 ## Overview
 
@@ -119,7 +122,8 @@ Hardware and device bridges.
 - Methodology changes require explicit human approval
 - Knowledge sources are curated; raw registries are never directly trusted
 - an-nexus remains fail-closed; no soft fallback cryptography
+- All higher-layer work remains subject to the invariants in `docs/SOVEREIGN_SUBSTRATE.md`
 
 ---
 
-*This architecture is the source of truth for LiquidOs agent behavior and repository structure.*
+*This architecture is the source of truth for LiquidOs agent behavior and repository structure. The substrate beneath it is non-bypassable.*

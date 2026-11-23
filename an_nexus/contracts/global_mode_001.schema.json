@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://liquidos.dev/schemas/global_mode_001.schema.json",
+  "title": "GLOBAL-MODE-001 Governance Fencing",
+  "description": "Control-plane operational mode and fencing state.",
+  "type": "object",
+  "required": ["mode", "epoch", "fencing_version", "active_key_id"],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["ACTIVE", "DEGRADED", "MISSING_VARIABLE", "QUARANTINED", "LOCKDOWN"]
+    },
+    "epoch": { "type": "integer", "minimum": 1 },
+    "fencing_version": { "type": "integer", "minimum": 1 },
+    "active_key_id": { "type": "string" },
+    "revoked_permit_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "last_transition_at": { "type": "integer" },
+    "last_transition_reason": { "type": "string" }
+  },
+  "additionalProperties": false
+}

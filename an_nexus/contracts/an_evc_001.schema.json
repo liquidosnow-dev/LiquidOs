@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://liquidos.dev/schemas/an_evc_001.schema.json",
+  "title": "AN-EVC-001 Canonical Evidence Envelope",
+  "description": "Machine-readable evidence envelope for cryptographic provenance under the Atomic Nexus substrate.",
+  "type": "object",
+  "required": ["contract_id", "envelope_schema", "event_id", "sequence_number", "timestamp_utc", "caller_identity", "gate_proof", "chain_provenance"],
+  "properties": {
+    "contract_id": { "type": "string", "const": "LIQ-LEDGER-CONTRACT-v1.0" },
+    "envelope_schema": { "type": "string", "const": "AN-EVC-001" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "sequence_number": { "type": "integer", "minimum": 0 },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "caller_identity": {
+      "type": "object",
+      "required": ["peer_pid", "peer_uid", "peer_gid"],
+      "properties": {
+        "peer_pid": { "type": "integer" },
+        "peer_uid": { "type": "integer" },
+        "peer_gid": { "type": "integer" }
+      }
+    },
+    "gate_proof": {
+      "type": "object",
+      "properties": {
+        "ast_root_verb": { "type": "string", "enum": ["SELECT", "WITH"] },
+        "query_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "target_engine": { "type": "string" },
+        "bound_runtime_model": { "type": "string" }
+      }
+    },
+    "chain_provenance": {
+      "type": "object",
+      "required": ["previous_record_hash", "current_record_hash", "ed25519_signature"],
+      "properties": {
+        "previous_record_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "current_record_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "ed25519_signature": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}
