@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local signing custody. Generated on first boot (mode 0600). Never commit.
+.control-plane-state/signing-key.json
