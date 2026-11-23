@@ -1,7 +1,7 @@
 # LiquidOs Development Contract
 
 **Status**: Binding for all agents operating inside LiquidOs  
-**Version**: 2026-11-15
+**Version**: 2026-11-23
 
 This contract defines the mandatory behavior of every agent session.
 
@@ -54,6 +54,8 @@ When the task is non-trivial (new feature, non-obvious bug, architectural change
 
 Trivial tasks (typo fixes, obvious one-liners) may use lighter process, but still obey Karpathy Guidelines.
 
+Methodology sign-off in this section covers the design and the plan. It does not authorize field execution. See section 7.
+
 ---
 
 ## 3. Skill & Knowledge Rules
@@ -70,6 +72,8 @@ Trivial tasks (typo fixes, obvious one-liners) may use lighter process, but stil
 - Significant deliverables **should** be attested with an-nexus
 - Attestation includes relevant process artifacts (design, plan, test evidence) where practical
 - Fail-closed cryptography remains mandatory; no soft fallbacks
+- The manifest schema is `an-nexus.manifest.v4`. Do not invent a parallel manifest.
+- A status flag is not an attestation.
 
 ---
 
@@ -78,6 +82,7 @@ Trivial tasks (typo fixes, obvious one-liners) may use lighter process, but stil
 - Designs and implementation plans surface for human review (Plannotator)
 - Agents do not silently proceed past unresolved ambiguity on important decisions
 - Humans retain final authority on architecture, product direction, and risk acceptance
+- Plannotator annotation is required before execution of deployment plans, compose files, and model selections. Methodology sign-off does not replace it.
 
 ---
 
@@ -85,6 +90,18 @@ Trivial tasks (typo fixes, obvious one-liners) may use lighter process, but stil
 
 This contract is loaded as permanent context for LiquidOs agent sessions.  
 Violations (especially of Karpathy Guidelines or skipping human sign-off on non-trivial work) are treated as process failures.
+
+---
+
+## 7. Spec 10 decisions
+
+Binding detail lives in `docs/DECISIONS.md`. The short form:
+
+1. **Signature.** `d_manifest` plus a continuity anchor (`prev_hash`, `signer_id`, `sig`). Deploy attestations must include container config, source revision, and each loaded weight file as manifest entries. Checksums are SHA-256 of the file bytes.
+2. **Authority.** Methodology signs the design and the plan. Plannotator signs plans, compose, and model selections before they run. Continuity signatures may be produced only by `AUDIT_SIGNER`, `CONTINUITY_AUTHORITY`, or `AUDIT_AND_ISSUER`.
+3. **Canon.** `Knowledge/` has one writer. LoopForge appends a delta only after `verify_chain` accepts the new anchor. Last-write-wins between two runs is rejected.
+
+If this section and an earlier section disagree, this section wins.
 
 ---
 
