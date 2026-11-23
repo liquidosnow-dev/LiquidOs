@@ -26,6 +26,12 @@ System capabilities are organized across five discrete operational planes that c
 
 To eliminate micro-architectural CPU bottlenecks caused by false sharing across Symmetric Multiprocessing (SMP) cores, Liquid OS isolates single-producer single-consumer (SPSC) queue head and tail pointers onto distinct 64-byte hardware cache lines using explicit alignment annotations (`#[repr(align(64))]`). Network frames entering the edge interface are bound by a rigid 16 MB `MAX_FRAME` ceiling and a 4-byte big-endian length prefix state machine, ensuring that malformed payloads trigger clean connection drops rather than system-wide daemon panics or heap-spraying vulnerabilities.
 
+### Trust Zones (Isolation Topology)
+
+Orthogonal to the five operational planes, the system is partitioned into seven Trust Zones that govern *who* may perform actions and under what isolation guarantees. Full taxonomy, Policy Enforcement Points (PEPs), and zone responsibilities are defined in [`docs/TRUST_ZONES.md`](TRUST_ZONES.md).
+
+The Trusted Control Plane is the unbypassable gateway for credentials and policy decisions. Raw secrets never leave it into Semi-Trusted or Untrusted zones.
+
 ---
 
 ## 2. Kernel-Anchored Identity & Rule S4 Ingress Shield
@@ -138,9 +144,11 @@ Evaluates five attack vectors before tool dispatch. Decouples model detection/re
 
 ## Related Documents
 
+- `docs/TRUST_ZONES.md` — Seven Trust Zones and Policy Enforcement Points
 - `docs/ARCHITECTURE.md` — 10-layer agentic stack that sits on this substrate
 - `docs/DECISIONS.md` — Hard invariants D-18 through D-23
 - `docs/PRODUCTION_READINESS.md` — Cards-on-the-Table matrix
+- `docs/APPLE_SECURE_ENCLAVE.md` — Apple-platform identity path for D-18
 - `an_nexus/contracts/` — Machine-readable schema definitions
 
 ---
