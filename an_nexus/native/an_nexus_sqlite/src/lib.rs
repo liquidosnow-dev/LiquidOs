@@ -61,36 +61,19 @@ pub fn install_readonly_authorizer(conn: &Connection) -> SqliteResult<()> {
         | AuthAction::DropTrigger { .. }
         | AuthAction::AlterTable { .. }
         | AuthAction::Reindex { .. }
-        | AuthAction::Analyze { .. }
-        | AuthAction::Function { .. } => {
-            // Note: Function is already allowed above; this arm is unreachable
-            // for Function but kept for exhaustive matching of dangerous ops.
-            Authorization::Deny
-        }
+        | AuthAction::Analyze { .. } => Authorization::Deny,
 
-        // Fail closed
+        // Fail closed for any future / unknown action codes
         _ => Authorization::Deny,
     }))
 }
 
-/// Explicitly disable loadable extensions for this connection.
+/// Explicitly document that loadable extensions remain disabled.
 ///
-/// Uses the C API path that turns off both the SQL `load_extension()` function
-/// and the C `sqlite3_load_extension()` entry point when possible. This is
-/// defense-in-depth; the default is already disabled.
-fn disable_load_extension(conn: &Connection) -> Result<()> {
-    // rusqlite does not expose SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION on the
-    // high-level DbConfig enum in all versions. We therefore use the safe
-    // public surface that is always available when the load_extension feature
-    // is *not* enabled (our Cargo.toml intentionally omits it).
-    //
-    // Calling load_extension_disable is a no-op / safe when loading was never
-    // enabled, and documents the security intent in code.
-    //
-    // If a future rusqlite version exposes the DBCONFIG constant cleanly we
-    // can switch to it; until then this + the VDBE authorizer + READ_ONLY
-    // flags provide the required posture.
-    let _ = conn; // keep signature stable for future DBCONFIG call
+/// The `load_extension` Cargo feature is intentionally omitted from this crate.
+/// The default SQLite posture is "extensions off". This function exists so the
+/// security intent is visible in the call chain of every hardened handle.
+fn disable_load_extension(_conn: &Connection) -> Result<()> {
     Ok(())
 }
 
@@ -124,10 +107,6 @@ pub fn open_readonly_vault_handle<P: AsRef<Path>>(path: P) -> Result<Connection>
 
 /// Convenience: open an in-memory hardened connection (useful for tests).
 pub fn open_readonly_memory() -> Result<Connection> {
-    // In-memory databases cannot be opened with SQLITE_OPEN_READ_ONLY in the
-    // same way as file databases for subsequent writes, so we open normally
-    // then immediately install the authorizer and query_only. Callers must
-    // not expect mutation to succeed.
     let conn = Connection::open_in_memory()?;
     install_readonly_authorizer(&conn)?;
     disable_load_extension(&conn)?;
@@ -144,14 +123,12 @@ pub fn open_readonly_memory() -> Result<Connection> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::params;
     use tempfile::NamedTempFile;
 
     fn populated_file_db() -> (NamedTempFile, Connection) {
         let tmp = NamedTempFile::new().expect("temp file");
         let path = tmp.path();
 
-        // Create and populate with a normal (writable) connection first.
         {
             let conn = Connection::open(path).expect("create db");
             conn.execute_batch(
@@ -259,7 +236,6 @@ mod tests {
     #[test]
     fn multi_statement_mutation_is_denied() {
         let (_tmp, conn) = populated_file_db();
-        // Even if lexical layer is bypassed, the authorizer must still reject.
         let err = conn
             .execute_batch("SELECT 1; INSERT INTO items (name, qty) VALUES ('x', 1);")
             .expect_err("stacked mutation must fail");
