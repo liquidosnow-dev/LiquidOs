@@ -1,1 +1,249 @@
-PLACEHOLDER
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Origin Console · Architecture Map</title>
+<style>
+  :root {
+    --obsidian: #090A0F;
+    --surface-1: rgba(18, 20, 28, 0.92);
+    --surface-2: rgba(28, 32, 44, 0.88);
+    --cyan: #00F0FF;
+    --cyan-dim: rgba(0, 240, 255, 0.14);
+    --gold: #E8B84A;
+    --gold-dim: rgba(232, 184, 74, 0.16);
+    --rose: #FF5C7A;
+    --mint: #3DFFB5;
+    --text: #E8ECF4;
+    --muted: #8B93A7;
+    --line: rgba(0, 240, 255, 0.18);
+    --radius: 14px;
+    --font: "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; min-height: 100%;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(0,240,255,0.08), transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, rgba(232,184,74,0.06), transparent 50%),
+      var(--obsidian);
+    color: var(--text); font-family: var(--font);
+  }
+  .frame { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+  header.hero {
+    display: grid; gap: 10px; margin-bottom: 18px; padding: 18px;
+    border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px);
+    background: linear-gradient(180deg, var(--surface-1), rgba(9,10,15,0.9));
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cyan); }
+  h1 { margin: 0; font-size: clamp(1.35rem, 2.4vw, 1.85rem); font-weight: 650; letter-spacing: -0.02em; }
+  .sub { margin: 0; color: var(--muted); font-size: 0.92rem; line-height: 1.45; max-width: 78ch; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .chip { font-family: var(--mono); font-size: 11px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--cyan-dim); color: var(--cyan); }
+  .chip.gold { background: var(--gold-dim); color: var(--gold); border-color: rgba(232,184,74,0.28); }
+  .chip.mint { background: rgba(61,255,181,0.12); color: var(--mint); border-color: rgba(61,255,181,0.25); }
+  .chip.rose { background: rgba(255,92,122,0.12); color: var(--rose); border-color: rgba(255,92,122,0.25); }
+  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 14px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-1); overflow: hidden; }
+  .panel h2 { margin: 0; padding: 12px 14px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); background: rgba(0,0,0,0.22); }
+  .tab-list { display: flex; flex-direction: column; padding: 8px; gap: 6px; max-height: min(72vh, 720px); overflow: auto; }
+  .tab-btn { text-align: left; border: 1px solid transparent; background: transparent; color: var(--text); border-radius: 10px; padding: 10px 11px; cursor: pointer; transition: 140ms ease; }
+  .tab-btn:hover { background: rgba(255,255,255,0.03); }
+  .tab-btn.active { background: var(--cyan-dim); border-color: rgba(0,240,255,0.35); box-shadow: 0 0 24px rgba(0,240,255,0.08); }
+  .tab-btn .name { display: block; font-weight: 600; font-size: 0.92rem; }
+  .tab-btn .meta { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-family: var(--mono); }
+  .main { display: grid; gap: 14px; }
+  .map-stages { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 960px) { .map-stages { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .map-stages { grid-template-columns: 1fr; } }
+  .stage { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); min-height: 150px; padding: 12px; transition: 160ms ease; }
+  .stage.hot { border-color: rgba(0,240,255,0.55); box-shadow: 0 0 28px rgba(0,240,255,0.12); background: linear-gradient(180deg, rgba(0,240,255,0.08), var(--surface-2)); }
+  .stage .label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cyan); margin-bottom: 8px; }
+  .stage .title { font-weight: 650; font-size: 0.95rem; margin-bottom: 8px; }
+  .stage ul { margin: 0; padding-left: 16px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .stage li { margin: 3px 0; }
+  .stage li.hit { color: var(--text); }
+  .stage li.hit strong { color: var(--cyan); }
+  .detail { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-1); padding: 16px; }
+  .detail h3 { margin: 0 0 6px; font-size: 1.15rem; }
+  .detail p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; font-size: 0.92rem; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); padding: 12px; }
+  .card h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .endpoint { display: grid; grid-template-columns: auto 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; }
+  .endpoint:last-child { border-bottom: 0; }
+  .method { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 3px 6px; border-radius: 6px; background: rgba(61,255,181,0.12); color: var(--mint); }
+  .method.post { background: rgba(0,240,255,0.12); color: var(--cyan); }
+  .method.sse { background: var(--gold-dim); color: var(--gold); }
+  .path { font-family: var(--mono); color: var(--text); word-break: break-all; }
+  .ep-note { grid-column: 2; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .gate { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; }
+  .gate:last-child { border-bottom: 0; }
+  .gate-badge { flex: 0 0 auto; font-family: var(--mono); font-size: 10px; padding: 3px 7px; border-radius: 999px; background: rgba(255,92,122,0.12); color: var(--rose); border: 1px solid rgba(255,92,122,0.25); }
+  .gate-badge.l1 { background: rgba(0,240,255,0.12); color: var(--cyan); border-color: rgba(0,240,255,0.28); }
+  .gate-badge.l2 { background: rgba(61,255,181,0.12); color: var(--mint); border-color: rgba(61,255,181,0.28); }
+  .gate-badge.l3 { background: var(--gold-dim); color: var(--gold); border-color: rgba(232,184,74,0.28); }
+  .gate-body { color: var(--muted); line-height: 1.4; }
+  .gate-body strong { color: var(--text); }
+  .flow { margin-top: 12px; padding: 12px; border-radius: 12px; border: 1px dashed rgba(0,240,255,0.25); background: rgba(0,240,255,0.03); font-family: var(--mono); font-size: 11px; line-height: 1.7; color: var(--muted); overflow-x: auto; white-space: pre; }
+  .flow .hl { color: var(--cyan); }
+  footer.note { margin-top: 14px; color: var(--muted); font-size: 11px; font-family: var(--mono); }
+  .pillars { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .pillar { font-family: var(--mono); font-size: 10px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); color: var(--muted); }
+  .pillar.on { color: var(--cyan); border-color: rgba(0,240,255,0.4); background: var(--cyan-dim); }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <header class="hero">
+      <div class="eyebrow">Origin Console · Liquid OS Web Client</div>
+      <h1>Interactive Architecture Map</h1>
+      <p class="sub">Click a console tab to highlight the path from UI surface → Hono API → dual-layer security gates (Rule S4 + VDBE) → vault / barrier routing. Viewport design target remains mobile-first 491px; this map is a desktop diagnostic canvas.</p>
+      <div class="legend">
+        <span class="chip">Layer 1 UI</span>
+        <span class="chip mint">Layer 2 Edge / Tunnel</span>
+        <span class="chip">Layer 3 Hono API</span>
+        <span class="chip rose">Layer 4 Security + Vault</span>
+        <span class="chip gold">SSE / Telemetry</span>
+      </div>
+    </header>
+    <div class="layout">
+      <aside class="panel">
+        <h2>Console Tabs</h2>
+        <div class="tab-list" id="tabList"></div>
+      </aside>
+      <section class="main">
+        <div class="map-stages" id="stages">
+          <div class="stage" data-stage="ui"><div class="label">01 · Presentation</div><div class="title">Console UI</div><ul id="stageUi"></ul></div>
+          <div class="stage" data-stage="edge"><div class="label">02 · Edge Ingress</div><div class="title">Pages / Tunnel</div><ul id="stageEdge"></ul></div>
+          <div class="stage" data-stage="api"><div class="label">03 · Hono API</div><div class="title">server.ts routes</div><ul id="stageApi"></ul></div>
+          <div class="stage" data-stage="sec"><div class="label">04 · Security Gates</div><div class="title">S4 · VDBE · Barriers</div><ul id="stageSec"></ul></div>
+        </div>
+        <div class="detail" id="detail">
+          <div class="pillars" id="pillars"></div>
+          <h3 id="detailTitle">Select a tab</h3>
+          <p id="detailDesc">Choose a console component to inspect its API bindings and security gates.</p>
+          <div class="grid-2">
+            <div class="card"><h4>Hono Endpoints</h4><div id="endpointList"></div></div>
+            <div class="card"><h4>Security Gates</h4><div id="gateList"></div></div>
+          </div>
+          <div class="flow" id="flow"></div>
+        </div>
+      </section>
+    </div>
+    <footer class="note">Origin Console architecture visualizer · UI tabs → Hono (/api/*) → Rule S4 / VDBE / JCS / Pi barriers · Liquid OS</footer>
+  </div>
+<script>
+const TABS = [
+  { id:"hud", name:"SignalConsoleHUD / App", meta:"shell · nav · pillars", pillars:["CORE_ENG_01","SHDW_SEC_02","INGR_GATE_03"],
+    desc:"Root presentation shell: top navigation, system pillars dropdown, and tab selector. Reflects barrier state badges from substrate health probes.",
+    ui:["App.tsx","SignalConsoleHUD.tsx","glassTokens.css (491px)"], edge:["Cloudflare Pages static assets","Optional health via tunnel"],
+    api:["GET /api/substrate/health (implied)","MCP status fan-in"], sec:["Read-only status probes","No direct SQL from shell"],
+    endpoints:[{method:"GET",path:"/api/substrate/mcp/dispatch",note:"Status / catalog probes via MCP stepper",cls:""}],
+    gates:[{layer:"L3",cls:"l3",title:"JCS receipts",body:"Status payloads may attach AN-EVC-001 metadata when crossing edge."}],
+    flow:"UI shell\n  → Cloudflare Pages (static)\n  → optional tunnel probe\n  → <span class=\"hl\">Hono status / MCP dispatch</span>\n  → barrier badges rendered in HUD" },
+  { id:"shadow", name:"ShadowBrainRouter", meta:"3-node threat telemetry", pillars:["CORE_ENG_01","SHDW_SEC_02","INGR_GATE_03"],
+    desc:"3-node grid telemetry for CORE_ENG_01, SHDW_SEC_02, and INGR_GATE_03. Surfaces threat containment pathways and live execution barrier states.",
+    ui:["ShadowBrainRouter.tsx","Barrier state chips"], edge:["Tunnel keeps local daemon private","Worker may forward signed health"],
+    api:["MCP dispatch stepper","Audit ledger append on events"], sec:["SECURITY_BARRIER","Pi Pipeline router"],
+    endpoints:[{method:"POST",path:"/api/substrate/mcp/dispatch",note:"Tool dispatch PREPARED→SIGNED→READ→CONFIRMED",cls:"post"},{method:"POST",path:"/api/substrate/sql-guard",note:"Guarded SQL probes from security node",cls:"post"}],
+    gates:[{layer:"L1",cls:"l1",title:"Rule S4",body:"Any SQL-shaped tool args validated before engine open."},{layer:"L2",cls:"l2",title:"VDBE / RO handle",body:"dbRO only — mutations denied at compile."},{layer:"SEC",cls:"",title:"SECURITY_BARRIER",body:"Pi Pipeline intercept before multi-engine route."}],
+    flow:"ShadowBrainRouter\n  → <span class=\"hl\">POST /api/substrate/mcp/dispatch</span>\n  → Pi Pipeline (SECURITY_BARRIER)\n  → Rule S4 → VDBE dbRO\n  → ledger event (SHA-256 chain)" },
+  { id:"preview", name:"PreviewCanvas", meta:"iframe · code · SSE tests", pillars:["CORE_ENG_01"],
+    desc:"Multi-view workspace: live iframe preview, code editing surface, and SSE-triggered Vitest execution through the tunnel.",
+    ui:["PreviewCanvas.tsx","iframe sandbox"], edge:["cloudflared → 127.0.0.1:17373","Pages hosts shell only"],
+    api:["SSE vitest watch","workspace module fetch"], sec:["No arbitrary SQL","Path-scoped workspace reads"],
+    endpoints:[{method:"SSE",path:"/api/tests/vitest/watch",note:"350/550ms debounce file watch stream",cls:"sse"},{method:"GET",path:"/api/workspace/coalition-module/:moduleId",note:"Module source for preview assembly",cls:""}],
+    gates:[{layer:"EDGE",cls:"l3",title:"Tunnel only",body:"Browser never speaks plaintext to local ports."},{layer:"L3",cls:"l3",title:"Path allowlist",body:"Workspace reads constrained to monorepo roots."}],
+    flow:"PreviewCanvas\n  → CF Tunnel\n  → <span class=\"hl\">SSE /api/tests/vitest/watch</span>\n  → local Vitest runner\n  → stream events → TestTrendAnalytics store" },
+  { id:"testing", name:"TestingTab + Trends", meta:"Vitest · coverage · ring buffer", pillars:["CORE_ENG_01","SHDW_SEC_02"],
+    desc:"Dual-axis Recharts panel for pass/fail and coverage %. 10-run ring buffer; can trigger security gate runs.",
+    ui:["TestingTab.tsx","TestTrendAnalytics.tsx","testMetricsStore.ts"], edge:["Tunnel SSE","CI receipt optional upload"],
+    api:["vitest watch SSE","security gate runner (local)"], sec:["run_security_gates.py","PVA-001 receipt"],
+    endpoints:[{method:"SSE",path:"/api/tests/vitest/watch",note:"Live test progress",cls:"sse"},{method:"POST",path:"/api/substrate/sql-guard",note:"Optional dual-layer regression probes",cls:"post"}],
+    gates:[{layer:"L1",cls:"l1",title:"Rule S4 matrix",body:"56/56 scenarios via CI gate orchestrator."},{layer:"L2",cls:"l2",title:"VDBE dual-layer",body:"Integration tests open RO handles and assert deny."},{layer:"L3",cls:"l3",title:"PVA-001",body:"scripts/run_security_gates.py emits verification receipt."}],
+    flow:"TestingTab\n  → <span class=\"hl\">SSE vitest/watch</span>\n  → metrics ring-buffer\n  → optional <span class=\"hl\">run_security_gates.py</span>\n  → PVA-001 JSON receipt" },
+  { id:"contract", name:"ContractHandoffTab", meta:"AN-EVC · coalition prompts", pillars:["SHDW_SEC_02","INGR_GATE_03"],
+    desc:"Canonical evidence envelopes (AN-EVC-001/002) and 1-click prompt generators for 4-module reconstruction.",
+    ui:["ContractHandoffTab.tsx","CoalitionHandshakeModal.tsx"], edge:["Worker normalizer → JCS","Neon receipt optional"],
+    api:["coalition-module/:id","sql-guard for ledger reads"], sec:["RFC 8785 JCS","gate_sql_and_jcs"],
+    endpoints:[{method:"GET",path:"/api/workspace/coalition-module/:moduleId",note:"Unabridged module + SHA-256",cls:""},{method:"POST",path:"/api/substrate/sql-guard",note:"Ledger / envelope query path",cls:"post"}],
+    gates:[{layer:"L1",cls:"l1",title:"Rule S4",body:"SELECT-only evidence queries."},{layer:"L3",cls:"l3",title:"RFC 8785 JCS",body:"Bit-exact key order for AN-EVC envelopes."},{layer:"L2",cls:"l2",title:"VDBE RO",body:"Envelope store reads never mutate."}],
+    flow:"ContractHandoffTab\n  → <span class=\"hl\">GET coalition-module/:id</span>\n  → SHA-256 checksum display\n  → optional <span class=\"hl\">sql-guard</span> ledger read\n  → JCS canonicalize → AN-EVC-001" },
+  { id:"files", name:"FileExplorerTab", meta:"tree · tar.gz export", pillars:["CORE_ENG_01"],
+    desc:"Hierarchical monorepo browser with 1-click POSIX USTAR .tar.gz export assembled server-side.",
+    ui:["FileExplorerTab.tsx"], edge:["Auth via tunnel bearer","No public FS exposure"],
+    api:["export-tar","coalition modules"], sec:["Path traversal deny","Bearer timing-safe compare"],
+    endpoints:[{method:"POST",path:"/api/workspace/export-tar",note:"POSIX USTAR .tar.gz of workspace subset",cls:"post"},{method:"GET",path:"/api/workspace/coalition-module/:moduleId",note:"Single-module raw source",cls:""}],
+    gates:[{layer:"AUTH",cls:"l3",title:"Bearer token",body:"crypto.timingSafeEqual on substrate routes."},{layer:"FS",cls:"",title:"Root jail",body:"Export limited to allowlisted monorepo paths."}],
+    flow:"FileExplorerTab\n  → Bearer auth\n  → <span class=\"hl\">POST /api/workspace/export-tar</span>\n  → USTAR + gzip\n  → download stream" },
+  { id:"sqlguard", name:"SQL Guard Console", meta:"Rule S4 · VDBE · ledger", pillars:["SHDW_SEC_02","INGR_GATE_03"],
+    desc:"Primary dual-layer SQL safety surface. Rule S4 + RO VDBE + LOS-CAP-REG-001 audit append.",
+    ui:["Testing / Contract SQL panels","Wish composer (surface-3)"], edge:["Worker may pre-normalize","Tunnel to Hono"],
+    api:["POST /api/substrate/sql-guard"], sec:["Rule S4","VDBE allow-list","JCS ledger"],
+    endpoints:[{method:"POST",path:"/api/substrate/sql-guard",note:"Bearer + Rule S4 + RO execute + audit append",cls:"post"}],
+    gates:[{layer:"L1",cls:"l1",title:"Rule S4 AST",body:"SELECT/WITH only; block multi-statement, DDL/DML, exfil."},{layer:"L2",cls:"l2",title:"VDBE authorizer",body:"Allow Select/Read/Function/Recursive/Transaction/Savepoint only."},{layer:"L3",cls:"l3",title:"JCS + ledger",body:"gate_sql_and_jcs → SHA-256 append-only chain."},{layer:"RUST",cls:"l2",title:"an_nexus_sqlite",body:"PyO3/Rust open_readonly_vault_handle preferred."}],
+    flow:"SQL console\n  → Bearer timingSafeEqual\n  → <span class=\"hl\">validateSqlRuleS4</span>\n  → <span class=\"hl\">open_readonly_vault / VDBE</span>\n  → dbRO query\n  → LOS-CAP-REG-001 ledger append" },
+  { id:"vault", name:"Vault Query / Hybrid Search", meta:"FTS5 · vec · RRF", pillars:["INGR_GATE_03","CORE_ENG_01"],
+    desc:"NotebookLM retrieval: FTS5 BM25 snippets fused with vector ranks via RRF (k=60). MEMORY_MTU and VECTOR_INDEX barriers route heavy work.",
+    ui:["Search / ingestion panels","Context preview cards"], edge:["vault-proxy edge function","Tunnel to local vault"],
+    api:["sql-guard","mcp/dispatch tools"], sec:["FTS escape","VECTOR_INDEX_BARRIER","MEMORY_MTU_BARRIER"],
+    endpoints:[{method:"POST",path:"/api/substrate/sql-guard",note:"Parameterized FTS / hybrid SQL",cls:"post"},{method:"POST",path:"/api/substrate/mcp/dispatch",note:"Tool-routed retrieval",cls:"post"}],
+    gates:[{layer:"L1",cls:"l1",title:"escape_fts5_query",body:"Neutralize FTS operators from model text."},{layer:"VEC",cls:"l2",title:"VECTOR_INDEX_BARRIER",body:"ANN path via sqlite-vec / LanceDB."},{layer:"MTU",cls:"l3",title:"MEMORY_MTU_BARRIER",body:"Large scans → DuckDB columnar."},{layer:"L2",cls:"l2",title:"dbRO only",body:"vault_fts / vault_docs read path."}],
+    flow:"Search UI\n  → <span class=\"hl\">escape_fts5_query</span>\n  → FTS5 BM25 + snippet\n  → vector KNN ids\n  → <span class=\"hl\">RRF k=60</span>\n  → hits_to_context (MTU-bound)" }
+];
+
+const list = document.getElementById("tabList");
+const stages = ["ui","edge","api","sec"].map(s => document.querySelector(`.stage[data-stage="${s}"]`));
+
+function renderList() {
+  list.innerHTML = "";
+  TABS.forEach((t,i) => {
+    const b = document.createElement("button");
+    b.className = "tab-btn" + (i===0?" active":"");
+    b.type = "button"; b.dataset.id = t.id;
+    b.innerHTML = `<span class="name">${t.name}</span><span class="meta">${t.meta}</span>`;
+    b.addEventListener("click", () => selectTab(t.id));
+    list.appendChild(b);
+  });
+}
+function fillStage(el, items, activeSet) {
+  el.innerHTML = items.map(x => {
+    const hit = activeSet.has(x) || [...activeSet].some(a => x.includes(a) || a.includes(x));
+    return `<li class="${hit?"hit":""}">${hit?"<strong>"+x+"</strong>":x}</li>`;
+  }).join("");
+}
+function selectTab(id) {
+  const t = TABS.find(x => x.id===id) || TABS[0];
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.id===t.id));
+  const active = new Set([...(t.ui||[]),...(t.edge||[]),...(t.api||[]),...(t.sec||[])]);
+  fillStage(document.getElementById("stageUi"), t.ui, active);
+  fillStage(document.getElementById("stageEdge"), t.edge, active);
+  fillStage(document.getElementById("stageApi"), t.api, active);
+  fillStage(document.getElementById("stageSec"), t.sec, active);
+  stages.forEach(s => s.classList.add("hot"));
+  clearTimeout(window.__pulse);
+  window.__pulse = setTimeout(() => stages.forEach(s => s.classList.remove("hot")), 900);
+  document.getElementById("detailTitle").textContent = t.name;
+  document.getElementById("detailDesc").textContent = t.desc;
+  const allP = ["CORE_ENG_01","SHDW_SEC_02","INGR_GATE_03"];
+  document.getElementById("pillars").innerHTML = allP.map(p =>
+    `<span class="pillar ${t.pillars.includes(p)?"on":""}">${p}</span>`).join("");
+  document.getElementById("endpointList").innerHTML = (t.endpoints||[]).map(e => `
+    <div class="endpoint"><span class="method ${e.cls||""}">${e.method}</span>
+      <div><div class="path">${e.path}</div><div class="ep-note">${e.note||""}</div></div></div>`).join("") || "<div class=\"ep-note\">No direct endpoints</div>";
+  document.getElementById("gateList").innerHTML = (t.gates||[]).map(g => `
+    <div class="gate"><span class="gate-badge ${g.cls||""}">${g.layer}</span>
+      <div class="gate-body"><strong>${g.title}</strong> — ${g.body}</div></div>`).join("");
+  document.getElementById("flow").innerHTML = t.flow || "";
+}
+renderList();
+selectTab("hud");
+</script>
+</body>
+</html>
