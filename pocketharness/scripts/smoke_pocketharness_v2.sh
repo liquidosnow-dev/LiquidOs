@@ -28,12 +28,12 @@ echo "==> starting bridge"
 (
   cd "$BRIDGE_DIR"
   HARNESS_BRIDGE_TOKEN="$TOKEN" node server.js
-) &amp;
+) &
 BRIDGE_PID=$!
 
 # wait for health
 for i in 1 2 3 4 5 6 7 8 9 10; do
-  if curl -sf "$BASE/health" >/dev/null 2>&amp;1; then
+  if curl -sf "$BASE/health" >/dev/null 2>&1; then
     break
   fi
   sleep 0.3
