@@ -1,0 +1,17 @@
+name: Security concern (non-sensitive only)
+description: Route non-sensitive security questions; do not disclose vulnerability details publicly.
+title: "[Security process question]: "
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not report exploitable vulnerability details, secrets, keys, tokens, personal data, or customer evidence here.**
+        Use GitHub private vulnerability reporting if enabled, or contact the maintainer privately as described in SECURITY.md.
+  - type: textarea
+    id: process
+    attributes:
+      label: Non-sensitive process question
+      description: Describe only the general process or documentation issue.
+    validations:
+      required: true
