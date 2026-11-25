@@ -21,6 +21,11 @@ import {
   Wrench,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
+import { MercurySphere } from './MercurySphere';
+import { MercuryEdgeRipple } from './MercuryEdgeRipple';
+import { MercuryTooltip } from './MercuryTooltip';
+import { MercuryFrameGlow } from './MercuryFrameGlow';
+import { useMercuryFrameGlow } from '../hooks/useMercuryFrameGlow';
 
 interface HeaderProps {
   selectedModel: ModelOption;
@@ -72,6 +77,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isArchitectureMenuOpen, setIsArchitectureMenuOpen] = useState(false);
+  const { frameRef: headerFrameRef, glowHandlers: headerGlowHandlers } = useMercuryFrameGlow<HTMLElement>();
 
   const architecturePillars = [
     {
@@ -119,28 +125,35 @@ export const Header: React.FC<HeaderProps> = ({
   ].filter((item) => Boolean(item.action));
 
   return (
-    <header className="h-14 glass-surface-1 border-x-0 border-t-0 px-3 sm:px-4 flex items-center justify-between text-slate-100 shrink-0 z-30 font-sans gap-3">
+    <header
+      ref={headerFrameRef}
+      {...headerGlowHandlers}
+      data-mercury-panel="header"
+      className="relative h-14 glass-surface-1 border-x-0 border-t-0 rounded-b-2xl px-3 sm:px-4 flex items-center justify-between text-slate-100 shrink-0 z-30 font-sans gap-3"
+    >
+      <MercuryFrameGlow />
+      <MercuryEdgeRipple variant="dual" delaySeconds={0.4} durationSeconds={14} rx={16} />
       {/* Zone 1: Brand Identity & Multi-Model Selector */}
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="relative z-10 flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 sm:flex-initial">
         {onToggleMobileSidebar && (
-          <button
-            type="button"
-            onClick={onToggleMobileSidebar}
-            className="p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 hover:text-white lg:hidden cursor-pointer shrink-0"
-            title="Toggle Sidebar"
-          >
-            <Menu className="w-4 h-4" />
-          </button>
+          <MercuryTooltip content="Open workspace navigation drawer" placement="bottom">
+            <button
+              type="button"
+              onClick={onToggleMobileSidebar}
+              className="mercury-press p-1.5 rounded-xl glass-surface-2 text-slate-300 hover:text-white lg:hidden cursor-pointer shrink-0"
+              aria-label="Toggle Sidebar"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+          </MercuryTooltip>
         )}
 
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-white font-mono font-bold text-xs shadow-sm shrink-0">
-            1
-          </div>
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 shrink-0">
+          <MercurySphere size="sm" label="LiquidOS ONE Mercury Sphere" />
           <div className="leading-tight hidden sm:block min-w-0">
             <div className="flex items-center gap-2 font-bold text-sm tracking-tight text-white whitespace-nowrap">
               <span>LiquidOS ONE</span>
-              <span className="text-[11px] font-mono text-cyan-400 font-normal">AN-EVC-001</span>
+              <span className="text-[11px] font-mono text-cyan-300 font-normal">AN-EVC-001</span>
             </div>
             <div className="text-[11px] text-slate-400 font-normal truncate max-w-[180px]">
               {project.name}
@@ -148,22 +161,23 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        <div className="h-4 w-px bg-slate-800 hidden md:block shrink-0" />
+        <div className="h-4 w-px bg-slate-700/70 hidden md:block shrink-0" />
 
         {/* Multi-Model Selector Dropdown with Codex Capability Badges */}
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            data-testid="model-selector-trigger"
-            onClick={() => {
-              setIsModelDropdownOpen((v) => !v);
-              setIsArchitectureMenuOpen(false);
-            }}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg glass-surface-2 hover:border-cyan-400/50 text-xs transition-all cursor-pointer whitespace-nowrap"
-            aria-expanded={isModelDropdownOpen}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span className="font-semibold text-slate-100">{selectedModel.name}</span>
+        <div className="relative min-w-0 sm:shrink-0">
+          <MercuryTooltip content="Switch reasoning, tool-calling, and Puter AI models" placement="bottom" className="max-w-full min-w-0">
+            <button
+              type="button"
+              data-testid="model-selector-trigger"
+              onClick={() => {
+                setIsModelDropdownOpen((v) => !v);
+                setIsArchitectureMenuOpen(false);
+              }}
+              className="mercury-press flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl glass-surface-2 hover:border-slate-300/40 text-xs cursor-pointer whitespace-nowrap max-w-[152px] sm:max-w-none min-w-0"
+              aria-expanded={isModelDropdownOpen}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+              <span className="font-semibold text-slate-100 truncate">{selectedModel.name}</span>
             <span className="hidden md:inline-flex items-center gap-1 pl-1 border-l border-white/10">
               {selectedModel.supportsTools && (
                 <span
@@ -184,13 +198,14 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               )}
             </span>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          </button>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            </button>
+          </MercuryTooltip>
 
           {isModelDropdownOpen && (
             <div
               data-testid="model-selector-menu"
-              className="absolute left-0 mt-1.5 w-96 max-w-[92vw] glass-surface-2 rounded-xl p-2 z-50 space-y-1 max-h-[75vh] overflow-y-auto shadow-2xl"
+              className="mercury-crest-panel absolute left-0 mt-1.5 w-96 max-w-[92vw] glass-surface-2 rounded-2xl p-2 z-50 space-y-1 max-h-[75vh] overflow-y-auto shadow-2xl"
             >
               <div className="px-2.5 py-1 flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                 <span>Codex Multi-Model Selector</span>
@@ -267,46 +282,50 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Zone 2 & 3: Consolidated Navigation & Primary CTA */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Version Control */}
-        <button
-          type="button"
-          onClick={onOpenVersionControl}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-white/20 text-xs text-slate-200 transition-all cursor-pointer whitespace-nowrap"
-          title="Git Version Control & Commits"
-        >
-          <GitBranch className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-          <span className="font-mono text-[11px] hidden sm:inline">{project.currentBranch}</span>
-          <span className="font-mono tabular-nums text-slate-400 text-[11px] hidden lg:inline">
-            · {project.commits.length}
-          </span>
-        </button>
-
-        {/* Consolidated 6-Pillar Architecture Menu */}
-        <div className="relative">
+        <MercuryTooltip content="Git branches, commit history, and rollback controls" placement="bottom" className="hidden sm:inline-flex">
           <button
             type="button"
-            onClick={() => {
-              setIsArchitectureMenuOpen((v) => !v);
-              setIsModelDropdownOpen(false);
-            }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-white/20 text-xs text-slate-200 transition-all cursor-pointer whitespace-nowrap"
-            title="Open System Architecture Modules & Blueprints"
+            onClick={onOpenVersionControl}
+            className="mercury-press flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl glass-surface-1 text-xs text-slate-200 cursor-pointer whitespace-nowrap"
+            aria-label="Git Version Control & Commits"
           >
-            <Cpu className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span className="hidden md:inline">System Pillars</span>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <GitBranch className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span className="font-mono text-[11px] hidden sm:inline">{project.currentBranch}</span>
+            <span className="font-mono tabular-nums text-slate-400 text-[11px] hidden lg:inline">
+              · {project.commits.length}
+            </span>
           </button>
+        </MercuryTooltip>
+
+        {/* Consolidated 6-Pillar Architecture Menu */}
+        <div className="relative hidden sm:block">
+          <MercuryTooltip content="Inspect system architecture pillars and runtime blueprints" placement="bottom">
+            <button
+              type="button"
+              onClick={() => {
+                setIsArchitectureMenuOpen((v) => !v);
+                setIsModelDropdownOpen(false);
+              }}
+              className="mercury-press flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl glass-surface-1 text-xs text-slate-200 cursor-pointer whitespace-nowrap"
+              aria-label="Open System Architecture Modules & Blueprints"
+            >
+              <Cpu className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span className="hidden md:inline">System Pillars</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            </button>
+          </MercuryTooltip>
 
           {isArchitectureMenuOpen && (
-            <div className="absolute right-0 mt-1.5 w-72 glass-surface-2 rounded-xl p-1.5 z-50 space-y-1">
+            <div className="mercury-crest-panel absolute right-0 mt-1.5 w-72 glass-surface-2 rounded-2xl p-1.5 z-50 space-y-1">
               <button
                 type="button"
                 onClick={() => {
                   onOpenArchitecture();
                   setIsArchitectureMenuOpen(false);
                 }}
-                className="w-full px-2.5 py-2 rounded-lg text-left hover:bg-slate-800 transition-colors flex items-center justify-between cursor-pointer"
+                className="mercury-press w-full px-2.5 py-2 rounded-xl text-left hover:bg-slate-800/80 transition-colors flex items-center justify-between cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-semibold text-white">Pi Pipeline &amp; Vault Blueprint</div>
@@ -327,7 +346,7 @@ export const Header: React.FC<HeaderProps> = ({
                       pillar.action?.();
                       setIsArchitectureMenuOpen(false);
                     }}
-                    className="w-full px-2.5 py-2 rounded-lg text-left hover:bg-slate-800 transition-colors flex items-center gap-2.5 cursor-pointer"
+                    className="mercury-press w-full px-2.5 py-2 rounded-xl text-left hover:bg-slate-800/80 transition-colors flex items-center gap-2.5 cursor-pointer"
                   >
                     <Icon className={`w-4 h-4 ${pillar.accent} shrink-0`} />
                     <div className="min-w-0">
@@ -342,51 +361,59 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Security / MFA */}
-        <button
-          type="button"
-          onClick={onOpenSecurity}
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-white/20 text-xs text-slate-200 transition-all cursor-pointer whitespace-nowrap"
-          title="Security Protocols & MFA Matrix"
-        >
-          <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <span className="hidden lg:inline">AES-256 · MFA</span>
-        </button>
+        <MercuryTooltip content="Security protocols, MFA matrix, and key custody" placement="bottom">
+          <button
+            type="button"
+            onClick={onOpenSecurity}
+            className="mercury-press hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl glass-surface-1 text-xs text-slate-200 cursor-pointer whitespace-nowrap"
+            aria-label="Security Protocols & MFA Matrix"
+          >
+            <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="hidden lg:inline">AES-256 · MFA</span>
+          </button>
+        </MercuryTooltip>
 
         {/* Sandbox Specs & Metrics */}
         {onOpenMetrics && (
-          <button
-            type="button"
-            onClick={onOpenMetrics}
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-white/20 text-xs text-slate-200 transition-all cursor-pointer whitespace-nowrap font-mono tabular-nums"
-            title="Sandbox CPU/GPU & RAM Metrics (4 CPU / 8 GB)"
-          >
-            <Activity className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>{sandboxPlan} :8787</span>
-          </button>
+          <MercuryTooltip content="Live sandbox CPU, GPU, and RAM telemetry (4 CPU / 8 GB)" placement="bottom">
+            <button
+              type="button"
+              onClick={onOpenMetrics}
+              className="mercury-press hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl glass-surface-1 text-xs text-slate-200 cursor-pointer whitespace-nowrap font-mono tabular-nums"
+              aria-label="Sandbox CPU/GPU & RAM Metrics"
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>{sandboxPlan} :8787</span>
+            </button>
+          </MercuryTooltip>
         )}
 
         {/* Tutorial Quick Trigger */}
         {onOpenTutorial && (
-          <button
-            type="button"
-            onClick={onOpenTutorial}
-            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg glass-surface-1 hover:border-white/20 text-xs text-slate-200 hover:text-white transition-all cursor-pointer whitespace-nowrap"
-            title="Open Handoff Tutorial"
-          >
-            <BookOpen className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span>Tutorial</span>
-          </button>
+          <MercuryTooltip content="Open interactive handoff and system walkthrough" placement="bottom">
+            <button
+              type="button"
+              onClick={onOpenTutorial}
+              className="mercury-press hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl glass-surface-1 text-xs text-slate-200 hover:text-white cursor-pointer whitespace-nowrap"
+              aria-label="Open Handoff Tutorial"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span>Tutorial</span>
+            </button>
+          </MercuryTooltip>
         )}
 
         {/* Settings */}
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className="p-2 rounded-lg glass-surface-1 hover:border-white/20 text-slate-300 hover:text-white transition-all cursor-pointer shrink-0"
-          title="Apollo Hyperparameters & Settings"
-        >
-          <Sliders className="w-3.5 h-3.5" />
-        </button>
+        <MercuryTooltip content="Inference hyperparameters & LiteRT edge configuration" placement="bottom">
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="mercury-press p-2 rounded-xl glass-surface-1 text-slate-300 hover:text-white cursor-pointer shrink-0"
+            aria-label="Apollo Hyperparameters & Settings"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+          </button>
+        </MercuryTooltip>
 
         {/* Collaborator Avatars */}
         <div className="hidden xl:flex items-center -space-x-2 px-1 shrink-0" title="Active Collaborators">
@@ -401,28 +428,32 @@ export const Header: React.FC<HeaderProps> = ({
           ))}
         </div>
 
-        {/* PWA Install Prompt (renders when browser fires beforeinstallprompt or on iOS) */}
+        {/* PWA Install Prompt */}
         <PWAInstallButton />
 
         {/* Publish & Deploy CTA */}
         {onOpenPublish ? (
-          <button
-            type="button"
-            onClick={onOpenPublish}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <Rocket className="w-3.5 h-3.5 shrink-0" />
-            <span>Publish</span>
-          </button>
+          <MercuryTooltip content="Publish to Genspark Hosting, Cloudflare Edge, or GitHub" placement="bottom">
+            <button
+              type="button"
+              onClick={onOpenPublish}
+              className="mercury-press flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600/90 to-slate-700/90 hover:from-cyan-500 hover:to-slate-600 border border-slate-200/25 text-white font-semibold text-xs cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Rocket className="w-3.5 h-3.5 shrink-0" />
+              <span>Publish</span>
+            </button>
+          </MercuryTooltip>
         ) : (
-          <button
-            type="button"
-            onClick={onOpenDeploy}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <Rocket className="w-3.5 h-3.5 shrink-0" />
-            <span>Deploy</span>
-          </button>
+          <MercuryTooltip content="Verify Ed25519 receipt and deploy to Cloudflare" placement="bottom">
+            <button
+              type="button"
+              onClick={onOpenDeploy}
+              className="mercury-press flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600/90 to-slate-700/90 hover:from-cyan-500 hover:to-slate-600 border border-slate-200/25 text-white font-semibold text-xs cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Rocket className="w-3.5 h-3.5 shrink-0" />
+              <span>Deploy</span>
+            </button>
+          </MercuryTooltip>
         )}
       </div>
     </header>

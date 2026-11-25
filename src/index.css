@@ -3,6 +3,13 @@
 @layer base {
   :root {
     color-scheme: dark;
+    --mercury-bg: #060810;
+    --mercury-silver-edge: rgba(226, 232, 240, 0.24);
+    --mercury-silver-crest: rgba(248, 250, 252, 0.34);
+    --mercury-green-glint: #34d399;
+    --mercury-red-glint: #fb7185;
+    --mercury-ripple-intensity: 1;
+    --mercury-ripple-speed: 1;
   }
 
   html,
@@ -10,7 +17,7 @@
   #root {
     min-height: 100%;
     height: 100%;
-    background-color: #090a0f;
+    background-color: var(--mercury-bg);
     color: #e2e8f0;
     font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -23,50 +30,365 @@
   samp {
     font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid rgba(226, 232, 240, 0.72);
+    outline-offset: 2px;
+  }
 }
 
 @layer utilities {
+  /* MercurySi Sculpted Liquid-Glass Surfaces */
   .glass-surface-1 {
-    background: rgba(15, 23, 42, 0.72);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(226, 232, 240, 0.06) 0%, rgba(15, 23, 42, 0) 32%),
+      rgba(9, 13, 24, 0.8);
+    backdrop-filter: blur(16px) saturate(135%);
+    -webkit-backdrop-filter: blur(16px) saturate(135%);
+    border: 1px solid rgba(203, 213, 225, 0.14);
+    box-shadow:
+      inset 0 1px 0 rgba(248, 250, 252, 0.16),
+      inset 0 -1px 0 rgba(15, 23, 42, 0.65),
+      0 12px 32px -16px rgba(2, 6, 23, 0.85);
   }
 
   .glass-surface-2 {
-    background: rgba(15, 23, 42, 0.86);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background:
+      radial-gradient(120% 80% at 50% 0%, rgba(241, 245, 249, 0.085) 0%, rgba(15, 23, 42, 0) 60%),
+      rgba(12, 18, 34, 0.86);
+    backdrop-filter: blur(20px) saturate(145%);
+    -webkit-backdrop-filter: blur(20px) saturate(145%);
+    border: 1px solid rgba(226, 232, 240, 0.18);
+    box-shadow:
+      inset 0 1px 0 rgba(248, 250, 252, 0.24),
+      inset 0 14px 28px -18px rgba(226, 232, 240, 0.14),
+      0 14px 36px -14px rgba(2, 6, 23, 0.88);
   }
 
   .glass-surface-3 {
-    background: linear-gradient(135deg, rgba(6, 182, 212, 0.16), rgba(99, 102, 241, 0.14));
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    border: 1px solid rgba(34, 211, 238, 0.35);
+    background:
+      radial-gradient(110% 90% at 50% 0%, rgba(241, 245, 249, 0.11) 0%, rgba(30, 41, 59, 0) 58%),
+      linear-gradient(145deg, rgba(16, 25, 45, 0.92), rgba(10, 16, 32, 0.94));
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    border: 1px solid rgba(226, 232, 240, 0.24);
+    box-shadow:
+      inset 0 1.5px 0 rgba(248, 250, 252, 0.3),
+      inset 0 -1px 0 rgba(148, 163, 184, 0.12),
+      0 16px 40px -14px rgba(2, 6, 23, 0.92);
   }
 
   .glass-bubble-user {
-    background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95));
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(148, 163, 184, 0.22);
+    background:
+      linear-gradient(180deg, rgba(241, 245, 249, 0.09) 0%, rgba(30, 41, 59, 0) 45%),
+      linear-gradient(135deg, rgba(26, 36, 58, 0.92), rgba(13, 19, 34, 0.95));
+    backdrop-filter: blur(16px) saturate(135%);
+    -webkit-backdrop-filter: blur(16px) saturate(135%);
+    border: 1px solid rgba(226, 232, 240, 0.22);
+    box-shadow:
+      inset 0 1px 0 rgba(248, 250, 252, 0.24),
+      0 10px 24px -14px rgba(2, 6, 23, 0.85);
+  }
+
+  /* Sculpted curved crest cap for top panel contours */
+  .mercury-crest-panel {
+    position: relative;
+    border-top-left-radius: 1.35rem;
+    border-top-right-radius: 1.35rem;
+    border-bottom-left-radius: 1.15rem;
+    border-bottom-right-radius: 1.15rem;
+  }
+
+  .mercury-crest-panel::before {
+    content: '';
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    top: -1px;
+    height: 2px;
+    border-radius: 9999px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(226, 232, 240, 0.35) 28%,
+      rgba(255, 255, 255, 0.72) 50%,
+      rgba(226, 232, 240, 0.35) 72%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+
+  /* Pressure-Feel Tactile Button Feedback (pointer, touch, and keyboard activation) */
+  .mercury-press {
+    overflow: hidden;
+    transform: translateZ(0);
+    transition:
+      transform 170ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 170ms ease,
+      border-color 170ms ease,
+      background-color 170ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mercury-press::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+      circle at center,
+      rgba(248, 250, 252, 0.32) 0%,
+      rgba(167, 243, 208, 0.14) 38%,
+      transparent 72%
+    );
+    opacity: 0;
+    transform: scale(0.45);
+    transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease;
+    pointer-events: none;
+  }
+
+  .mercury-press:not(:disabled):hover {
+    border-color: rgba(226, 232, 240, 0.3);
+    box-shadow:
+      inset 0 1px 0 rgba(248, 250, 252, 0.26),
+      0 6px 18px -10px rgba(203, 213, 225, 0.28);
+  }
+
+  .mercury-press:not(:disabled):active,
+  .mercury-press:not(:disabled)[data-mercury-pressed="true"] {
+    transform: scale(0.962) translateY(1px);
+    border-color: rgba(248, 250, 252, 0.48);
+    box-shadow:
+      inset 0 2px 6px rgba(2, 6, 23, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.42),
+      0 0 14px -2px rgba(226, 232, 240, 0.25);
+  }
+
+  .mercury-press:not(:disabled):active::after,
+  .mercury-press:not(:disabled)[data-mercury-pressed="true"]::after {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+
+  /* Mercury Sphere subtle shifting specular reflection */
+  .mercury-caustic-drift {
+    animation: mercury-caustic 11s ease-in-out infinite;
+  }
+
+  .mercury-caustic-drift-active {
+    animation: mercury-caustic 5.5s ease-in-out infinite;
+  }
+
+  /* Frame-aware liquid-glass hover refraction & perimeter edge glow */
+  .mercury-frame-refraction {
+    opacity: var(--mglow, 0);
+    transition: opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    overflow: hidden;
+  }
+
+  .mercury-frame-refraction-core {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+      340px circle at var(--mx, 50%) var(--my, 0%),
+      rgba(248, 250, 252, 0.068) 0%,
+      rgba(186, 230, 253, 0.028) 36%,
+      transparent 72%
+    );
+  }
+
+  .mercury-frame-refraction-rim {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: radial-gradient(
+      240px circle at var(--mx, 50%) var(--my, 0%),
+      rgba(248, 250, 252, 0.68) 0%,
+      rgba(167, 243, 208, 0.28) 38%,
+      rgba(251, 113, 133, 0.14) 64%,
+      transparent 82%
+    );
+    -webkit-mask:
+      linear-gradient(#ffffff 0 0) content-box,
+      linear-gradient(#ffffff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#ffffff 0 0) content-box,
+      linear-gradient(#ffffff 0 0);
+    mask-composite: exclude;
+  }
+
+  /* Edge-light SVG ripple animations (live-tuned via Settings CSS variables) */
+  .mercury-edge-ripple-svg {
+    opacity: clamp(0, calc(var(--mercury-ripple-intensity, 1) * 0.68), 1);
+    filter: drop-shadow(
+      0 0 calc(max(0, var(--mercury-ripple-intensity, 1) - 0.85) * 4px)
+        rgba(226, 232, 240, 0.32)
+    );
+    transition: opacity 180ms ease;
+  }
+
+  .mercury-edge-glint {
+    animation: mercury-border-travel
+      calc(var(--edge-duration, 12s) / var(--mercury-ripple-speed, 1))
+      cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    animation-delay: calc(var(--edge-delay, 0s) / var(--mercury-ripple-speed, 1));
+  }
+
+  .galactic-orb {
+    animation: orb-float 22s ease-in-out infinite alternate;
   }
 
   .animate-fade-in {
-    animation: fade-in 0.25s ease-out;
+    animation: fade-in 0.22s ease-out;
   }
 
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  /* Liquid OS Command Interface — Sovereign Layered Glass & Metallic Surfaces */
+  .los-obsidian-stage {
+    background:
+      radial-gradient(64% 52% at 50% 48%, rgba(8, 51, 68, 0.38) 0%, rgba(15, 23, 42, 0.22) 45%, rgba(4, 7, 14, 0.98) 100%),
+      linear-gradient(180deg, #03060d 0%, #050a16 52%, #03060c 100%);
+  }
+
+  .los-glass-surface {
+    background:
+      linear-gradient(180deg, rgba(226, 232, 240, 0.065) 0%, rgba(15, 23, 42, 0.14) 28%, rgba(6, 11, 23, 0.78) 100%);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(203, 213, 225, 0.18);
+    box-shadow:
+      inset 0 1px 0 rgba(248, 250, 252, 0.24),
+      inset 0 -1px 0 rgba(34, 211, 238, 0.1),
+      0 20px 44px -18px rgba(2, 6, 23, 0.92),
+      0 0 28px -18px rgba(34, 211, 238, 0.24);
+  }
+
+  .los-glass-elevated {
+    background:
+      radial-gradient(120% 85% at 50% 0%, rgba(226, 232, 240, 0.095) 0%, rgba(15, 23, 42, 0.05) 55%),
+      linear-gradient(155deg, rgba(13, 22, 42, 0.9) 0%, rgba(5, 10, 22, 0.92) 100%);
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    border: 1px solid rgba(226, 232, 240, 0.24);
+    box-shadow:
+      inset 0 1px 0 rgba(248, 250, 252, 0.3),
+      inset 0 -1px 0 rgba(56, 189, 248, 0.14),
+      0 24px 54px -16px rgba(2, 6, 23, 0.95),
+      0 0 34px -16px rgba(34, 211, 238, 0.28);
+  }
+
+  .los-dock-surface {
+    background:
+      linear-gradient(180deg, rgba(226, 232, 240, 0.09) 0%, rgba(12, 19, 36, 0.92) 22%, rgba(4, 7, 15, 0.97) 100%);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border-top: 1px solid rgba(226, 232, 240, 0.25);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 -12px 36px -12px rgba(2, 6, 23, 0.9);
+  }
+
+  .los-hairline-silver {
+    border-color: rgba(203, 213, 225, 0.22);
+  }
+
+  .los-orbital-ring {
+    border: 1px solid rgba(34, 211, 238, 0.28);
+    box-shadow:
+      0 0 28px -6px rgba(34, 211, 238, 0.28),
+      inset 0 0 24px -8px rgba(34, 211, 238, 0.22);
+  }
+
+  .los-motion-panel {
+    transition:
+      transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform, opacity;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mercury-caustic {
+  0%,
+  100% {
+    transform: translate3d(-4%, -3%, 0) scale(1);
+    opacity: 0.72;
+  }
+  50% {
+    transform: translate3d(5%, 3%, 0) scale(1.04);
+    opacity: 0.92;
+  }
+}
+
+@keyframes mercury-border-travel {
+  0% {
+    stroke-dashoffset: 100;
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.92;
+  }
+  42% {
+    stroke-dashoffset: 0;
+    opacity: 0.82;
+  }
+  54% {
+    stroke-dashoffset: -18;
+    opacity: 0;
+  }
+  100% {
+    stroke-dashoffset: -18;
+    opacity: 0;
+  }
+}
+
+@keyframes orb-float {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(24px, -18px, 0) scale(1.06);
+  }
+}
+
+/* Reduced Motion Accessibility Guarantee */
+@media (prefers-reduced-motion: reduce) {
+  .mercury-caustic-drift,
+  .mercury-caustic-drift-active,
+  .galactic-orb {
+    animation: none !important;
+  }
+
+  .mercury-edge-glint {
+    animation: none !important;
+    stroke-dasharray: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: min(0.28, calc(var(--mercury-ripple-intensity, 1) * 0.24)) !important;
+  }
+
+  .mercury-frame-refraction,
+  .mercury-press,
+  .mercury-press::after,
+  .animate-fade-in,
+  .los-motion-panel {
+    transition-duration: 0.01ms !important;
+    animation: none !important;
   }
 }
 
@@ -81,12 +403,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.45);
+  background: rgba(148, 163, 184, 0.35);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.65);
+  background: rgba(203, 213, 225, 0.55);
 }
 
 /* Minimal Prism syntax token palette for dark code blocks */

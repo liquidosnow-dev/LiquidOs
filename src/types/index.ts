@@ -125,6 +125,8 @@ export interface ModelHyperparameters {
   kvCacheQuant?: 'Q8_0' | 'FP16';
   targetAccelerator?: 'gpu,cpu' | 'gpu' | 'cpu';
   peakRamCeilingMb?: number;
+  edgeRippleIntensity?: number;
+  edgeRippleSpeed?: number;
 }
 
 export interface DeploymentRecord {

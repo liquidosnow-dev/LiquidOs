@@ -1,6 +1,20 @@
 import React from 'react';
 import { ModelHyperparameters } from '../types';
-import { RotateCcw, Check, Zap, Sparkles, Cpu, Layers, ShieldCheck } from 'lucide-react';
+import { RotateCcw, Check, Zap, Sparkles, Cpu } from 'lucide-react';
+import {
+  DEFAULT_EDGE_RIPPLE_INTENSITY,
+  DEFAULT_EDGE_RIPPLE_SPEED,
+  MIN_EDGE_RIPPLE_INTENSITY,
+  MAX_EDGE_RIPPLE_INTENSITY,
+  MIN_EDGE_RIPPLE_SPEED,
+  MAX_EDGE_RIPPLE_SPEED,
+  clampEdgeRippleIntensity,
+  clampEdgeRippleSpeed,
+} from '../utils/mercuryAesthetics';
+import { MercuryEdgeRipple } from './MercuryEdgeRipple';
+import { MercuryFrameGlow } from './MercuryFrameGlow';
+import { MercurySphere } from './MercurySphere';
+import { useMercuryFrameGlow } from '../hooks/useMercuryFrameGlow';
 
 interface SettingsModalProps {
   settings: ModelHyperparameters;
@@ -11,6 +25,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onUpdateSettings,
 }) => {
+  const { frameRef: aestheticCardRef, glowHandlers: aestheticGlowHandlers } = useMercuryFrameGlow<HTMLDivElement>();
+  const { frameRef: previewStripRef, glowHandlers: previewStripGlowHandlers } = useMercuryFrameGlow<HTMLDivElement>();
+
+  const rippleIntensity = clampEdgeRippleIntensity(
+    settings.edgeRippleIntensity ?? DEFAULT_EDGE_RIPPLE_INTENSITY
+  );
+  const rippleSpeed = clampEdgeRippleSpeed(
+    settings.edgeRippleSpeed ?? DEFAULT_EDGE_RIPPLE_SPEED
+  );
+
   const handleSliderChange = (field: keyof ModelHyperparameters, value: number) => {
     onUpdateSettings({
       ...settings,
@@ -32,20 +56,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       kvCacheQuant: 'Q8_0',
       targetAccelerator: 'gpu,cpu',
       peakRamCeilingMb: 2800,
+      edgeRippleIntensity: DEFAULT_EDGE_RIPPLE_INTENSITY,
+      edgeRippleSpeed: DEFAULT_EDGE_RIPPLE_SPEED,
     });
   };
 
   return (
     <div className="w-full h-full max-w-2xl mx-auto p-4 md:p-6 overflow-y-auto space-y-6 text-slate-100">
       {/* Top Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+      <div className="flex items-center justify-between pb-3 border-b border-white/10 gap-3">
         <div>
-          <h2 className="text-lg font-bold text-white">Advanced Builder & Sampling Settings</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Apollo Hyperparameter Studio & Codex Synthesis Preferences</p>
+          <h2 className="text-lg font-bold text-white">Advanced Builder &amp; Sampling Settings</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Apollo Hyperparameter Studio, MercurySi Surface Tuning &amp; Codex Synthesis Preferences
+          </p>
         </div>
         <button
+          type="button"
           onClick={handleReset}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition-colors cursor-pointer"
+          className="mercury-press flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-surface-2 hover:border-slate-300/40 text-xs font-medium text-slate-200 cursor-pointer shrink-0"
           title="Reset to recommended defaults"
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -53,31 +82,185 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </button>
       </div>
 
-      {/* Builder Quality Section (from Lovable screenshot IMG 4) */}
-      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-lg">
+      {/* MercurySi Liquid-Glass & Edge Ripple Controls */}
+      <div
+        ref={aestheticCardRef}
+        {...aestheticGlowHandlers}
+        data-mercury-panel="settings-aesthetics"
+        className="mercury-crest-panel relative p-4 rounded-2xl glass-surface-2 space-y-4 shadow-xl"
+      >
+        <MercuryFrameGlow />
+        <div className="relative z-10 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <MercurySphere size="xs" label="MercurySi Aesthetic Calibration" />
+            <div>
+              <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                MercurySi Liquid-Glass &amp; Edge Ripples
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Tune perimeter light pulse intensity and travel cadence across command panels
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-white/5 border border-white/15 text-slate-300 shrink-0">
+            {rippleIntensity === 0
+              ? 'Static Glass'
+              : `${Math.round(rippleIntensity * 100)}% · ${rippleSpeed.toFixed(1)}x`}
+          </span>
+        </div>
+
+        {/* Live Interactive Calibration Strip */}
+        <div
+          ref={previewStripRef}
+          {...previewStripGlowHandlers}
+          data-mercury-panel="settings-ripple-preview"
+          className="mercury-crest-panel relative z-10 rounded-xl glass-surface-3 p-3 flex items-center justify-between gap-3"
+        >
+          <MercuryFrameGlow />
+          <MercuryEdgeRipple variant="dual" delaySeconds={0} durationSeconds={6} rx={14} />
+          <div className="relative z-10 min-w-0">
+            <div className="text-xs font-semibold text-white">Live Refraction &amp; Edge Pulse Preview</div>
+            <div className="text-[11px] text-slate-300/85">
+              Hover this surface to test frame refraction glow; pulses scale live below.
+            </div>
+          </div>
+          <span className="relative z-10 text-[10px] font-mono text-emerald-300 bg-black/40 border border-white/15 px-2 py-1 rounded-lg shrink-0">
+            Active
+          </span>
+        </div>
+
+        {/* Edge Ripple Intensity */}
+        <div className="relative z-10 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <label htmlFor="mercury-ripple-intensity" className="text-slate-200 font-medium">
+              Edge Ripple Intensity
+            </label>
+            <span
+              data-testid="ripple-intensity-value"
+              className="px-2.5 py-0.5 rounded-md bg-black/40 border border-white/15 text-cyan-300 font-mono text-xs tabular-nums"
+            >
+              {Math.round(rippleIntensity * 100)}%
+            </span>
+          </div>
+          <input
+            id="mercury-ripple-intensity"
+            aria-label="Edge Ripple Intensity"
+            type="range"
+            min={MIN_EDGE_RIPPLE_INTENSITY}
+            max={MAX_EDGE_RIPPLE_INTENSITY}
+            step={0.05}
+            value={rippleIntensity}
+            onChange={(e) =>
+              handleSliderChange('edgeRippleIntensity', clampEdgeRippleIntensity(parseFloat(e.target.value)))
+            }
+            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+          />
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            {[
+              { label: 'Off', value: 0 },
+              { label: 'Subtle (50%)', value: 0.5 },
+              { label: 'Balanced (100%)', value: 1.0 },
+              { label: 'Luminous (140%)', value: 1.4 },
+            ].map((preset) => {
+              const isSelected = Math.abs(rippleIntensity - preset.value) < 0.03;
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => handleSliderChange('edgeRippleIntensity', preset.value)}
+                  className={`mercury-press px-2.5 py-1 rounded-lg text-[11px] font-medium border cursor-pointer ${
+                    isSelected
+                      ? 'glass-surface-3 border-cyan-400/55 text-white font-semibold'
+                      : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Edge Ripple Speed */}
+        <div className="relative z-10 space-y-2 pt-2 border-t border-white/10">
+          <div className="flex items-center justify-between text-sm">
+            <label htmlFor="mercury-ripple-speed" className="text-slate-200 font-medium">
+              Edge Ripple Speed
+            </label>
+            <span
+              data-testid="ripple-speed-value"
+              className="px-2.5 py-0.5 rounded-md bg-black/40 border border-white/15 text-emerald-300 font-mono text-xs tabular-nums"
+            >
+              {rippleSpeed.toFixed(1)}x
+            </span>
+          </div>
+          <input
+            id="mercury-ripple-speed"
+            aria-label="Edge Ripple Speed"
+            type="range"
+            min={MIN_EDGE_RIPPLE_SPEED}
+            max={MAX_EDGE_RIPPLE_SPEED}
+            step={0.1}
+            value={rippleSpeed}
+            onChange={(e) =>
+              handleSliderChange('edgeRippleSpeed', clampEdgeRippleSpeed(parseFloat(e.target.value)))
+            }
+            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+          />
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            {[
+              { label: 'Calm (0.5x)', value: 0.5 },
+              { label: 'Standard (1.0x)', value: 1.0 },
+              { label: 'Swift (1.6x)', value: 1.6 },
+              { label: 'Brisk (2.2x)', value: 2.2 },
+            ].map((preset) => {
+              const isSelected = Math.abs(rippleSpeed - preset.value) < 0.06;
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => handleSliderChange('edgeRippleSpeed', preset.value)}
+                  className={`mercury-press px-2.5 py-1 rounded-lg text-[11px] font-medium border cursor-pointer ${
+                    isSelected
+                      ? 'glass-surface-3 border-emerald-400/55 text-white font-semibold'
+                      : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Builder Quality Section */}
+      <div className="mercury-crest-panel p-4 rounded-2xl glass-surface-2 space-y-4 shadow-lg">
         <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Builder Preferences</h3>
 
         <div>
           <div className="text-sm font-semibold text-white mb-1">Build quality</div>
           <p className="text-xs text-slate-400 mb-3">Thorough lets the AI think longer with extended reasoning for better results, but takes more time.</p>
-          <div className="flex items-center gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800 max-w-xs">
+          <div className="flex items-center gap-2 p-1 bg-black/35 rounded-xl border border-white/15 max-w-xs">
             <button
+              type="button"
               onClick={() => onUpdateSettings({ ...settings, buildQuality: 'fast' })}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`mercury-press flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
                 settings.buildQuality === 'fast'
-                  ? 'bg-slate-800 text-white font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'glass-surface-2 text-white font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
               <Zap className="w-3.5 h-3.5 text-amber-400" />
               <span>Fast</span>
             </button>
             <button
+              type="button"
               onClick={() => onUpdateSettings({ ...settings, buildQuality: 'thorough' })}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`mercury-press flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer ${
                 settings.buildQuality === 'thorough'
-                  ? 'bg-cyan-600 text-white font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-cyan-600/90 text-white font-bold shadow-sm border border-cyan-300/30'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
@@ -86,13 +269,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-3 border-t border-slate-800/80">
+        <div className="flex items-center justify-between pt-3 border-t border-white/10">
           <div>
             <div className="text-sm font-semibold text-white">Quick edits</div>
             <p className="text-xs text-slate-400">For small changes, the AI rewrites only the part that changes. Much faster on big sites.</p>
           </div>
           <input
             type="checkbox"
+            aria-label="Enable quick edits"
             checked={settings.quickEdits}
             onChange={(e) => onUpdateSettings({ ...settings, quickEdits: e.target.checked })}
             className="w-5 h-5 accent-cyan-500 rounded cursor-pointer"

@@ -13,6 +13,13 @@ import { createCommit, rollbackToCommit, verifyCommitIntegrity } from './utils/v
 import { extractFilesFromResponse, safeEvaluateMath } from './utils/toolExecutor';
 import { runCodexPuterChat } from './utils/codexToolEngine';
 import {
+  DEFAULT_EDGE_RIPPLE_INTENSITY,
+  DEFAULT_EDGE_RIPPLE_SPEED,
+  applyMercuryAestheticCssVars,
+  loadMercuryAestheticsFromStorage,
+  saveMercuryAestheticsToStorage,
+} from './utils/mercuryAesthetics';
+import {
   FileModification,
   classifyAndPlanRequest,
   runRecursiveLoop,
@@ -80,6 +87,20 @@ import { TutorialTab } from './components/TutorialTab';
 import { TestingTab } from './components/TestingTab';
 import { PlayStoreAuditView } from './components/PlayStoreAuditView';
 import { OfflineIndicator } from './components/PWAInstallButton';
+import { SystemStatus } from './components/core/SystemStatus';
+import { SpatialNavigation } from './components/core/SpatialNavigation';
+import { NavigationDock } from './components/navigation/NavigationDock';
+import {
+  ProjectBriefStatus,
+  SpatialNavigationState,
+  WorkspaceProjectRecord,
+  buildInitialWorkspaceProjects,
+  computeProjectWatermark,
+  createInitialSpatialState,
+  deriveProjectMilestones,
+  transitionSpatialDirection,
+} from './utils/spatialNavigation';
+import { X, ArrowLeft, Layers, Shield, Cpu, Database, Server, Compass } from 'lucide-react';
 import {
   INITIAL_SANDBOX_SPECS,
   INITIAL_CLOUDFLARE_BINDINGS,
@@ -254,8 +275,16 @@ export default function App() {
   const [activeFilePath, setActiveFilePath] = useState<string>(project.files[0]?.path || 'index.html');
   const [activeTemplateId, setActiveTemplateId] = useState<string>(defaultTemplate.id);
 
-  // 2. Navigation & Viewport State
+  // 2. Navigation, Spatial Core & Workbench Overlay State
   const [rightPanelTab, setRightPanelTab] = useState<WorkspaceTabType>('preview');
+  const [spatialState, setSpatialState] = useState<SpatialNavigationState>(() =>
+    createInitialSpatialState()
+  );
+  const [workbenchOpen, setWorkbenchOpen] = useState<boolean>(false);
+  const [consoleFocusNonce, setConsoleFocusNonce] = useState<number>(0);
+  const [customProjectRecords, setCustomProjectRecords] = useState<WorkspaceProjectRecord[]>(() =>
+    buildInitialWorkspaceProjects(project, TEMPLATES)
+  );
 
   // 2b. Sandbox Hardware, Cloudflare Bindings & Publishing State
   const [sandboxSpecs, setSandboxSpecs] = useState<CloudSandboxSpecs>(INITIAL_SANDBOX_SPECS);
@@ -1300,21 +1329,36 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState<ModelOption>(AVAILABLE_MODELS[0]);
   const [selectedPersona, setSelectedPersona] = useState<string>('Full-Stack App Builder');
 
-  // 4. Model Hyperparameters (Apollo settings)
-  const [settings, setSettings] = useState<ModelHyperparameters>({
-    temperature: 0.70,
-    topP: 0.90,
-    seed: 198662,
-    maxOutput: 2048,
-    minP: 0.05,
-    repetitionPenalty: 1.10,
-    buildQuality: 'thorough',
-    quickEdits: true,
-    mtpSpeculativeDecoding: true,
-    kvCacheQuant: 'Q8_0',
-    targetAccelerator: 'gpu,cpu',
-    peakRamCeilingMb: 2800,
+  // 4. Model Hyperparameters & MercurySi Aesthetics
+  const [settings, setSettings] = useState<ModelHyperparameters>(() => {
+    const mercuryPrefs = loadMercuryAestheticsFromStorage();
+    return {
+      temperature: 0.70,
+      topP: 0.90,
+      seed: 198662,
+      maxOutput: 2048,
+      minP: 0.05,
+      repetitionPenalty: 1.10,
+      buildQuality: 'thorough',
+      quickEdits: true,
+      mtpSpeculativeDecoding: true,
+      kvCacheQuant: 'Q8_0',
+      targetAccelerator: 'gpu,cpu',
+      peakRamCeilingMb: 2800,
+      edgeRippleIntensity: mercuryPrefs.edgeRippleIntensity,
+      edgeRippleSpeed: mercuryPrefs.edgeRippleSpeed,
+    };
   });
+
+  useEffect(() => {
+    const intensity = settings.edgeRippleIntensity ?? DEFAULT_EDGE_RIPPLE_INTENSITY;
+    const speed = settings.edgeRippleSpeed ?? DEFAULT_EDGE_RIPPLE_SPEED;
+    applyMercuryAestheticCssVars(document.documentElement, intensity, speed);
+    saveMercuryAestheticsToStorage({
+      edgeRippleIntensity: intensity,
+      edgeRippleSpeed: speed,
+    });
+  }, [settings.edgeRippleIntensity, settings.edgeRippleSpeed]);
 
   const { startInteractionTimer, trackInteraction, flushSessionTelemetry } =
     useAssistantSentiment();
@@ -2061,8 +2105,269 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
     }
   };
 
+  // Keyboard activation parity for MercurySi pressure-feel controls (Enter / Space)
+  useEffect(() => {
+    let activeTarget: HTMLElement | null = null;
+    let releaseTimer: number | null = null;
+
+    const clearPressed = () => {
+      if (activeTarget) {
+        activeTarget.removeAttribute('data-mercury-pressed');
+        activeTarget = null;
+      }
+      if (releaseTimer !== null) {
+        window.clearTimeout(releaseTimer);
+        releaseTimer = null;
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== ' ' && e.key !== 'Enter') return;
+      const target = (e.target as HTMLElement | null)?.closest?.('.mercury-press') as HTMLElement | null;
+      if (!target || target.hasAttribute('disabled')) return;
+      clearPressed();
+      activeTarget = target;
+      target.setAttribute('data-mercury-pressed', 'true');
+      releaseTimer = window.setTimeout(clearPressed, 320);
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ' || e.key === 'Enter') {
+        clearPressed();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', clearPressed);
+
+    return () => {
+      clearPressed();
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', clearPressed);
+    };
+  }, []);
+
+  // Synchronize live active project files & milestones into ProjectWorkspace records
+  const workspaceProjects: WorkspaceProjectRecord[] = useMemo(() => {
+    const exists = customProjectRecords.some((r) => r.id === project.id);
+    const syncedList = customProjectRecords.map((rec) => {
+      if (rec.id !== project.id) return rec;
+      return {
+        ...rec,
+        name: project.name,
+        description: project.description,
+        files: project.files,
+        status: 'Active' as const,
+        milestones: deriveProjectMilestones(project, {
+          testsPassed: Boolean(watchTestStatus && watchTestStatus.failed === 0 && watchTestStatus.passed > 0),
+          briefApproved: rec.brief?.status === 'approved',
+        }),
+        updatedAt: project.updatedAt,
+      };
+    });
+    if (!exists) {
+      syncedList.unshift({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        watermark: computeProjectWatermark(project.id, project.name),
+        status: 'Active',
+        files: project.files,
+        milestones: deriveProjectMilestones(project),
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+      });
+    }
+    return syncedList;
+  }, [customProjectRecords, project, watchTestStatus]);
+
+  const handleOpenWorkbenchTab = (tab: WorkspaceTabType = 'preview') => {
+    setRightPanelTab(tab);
+    setWorkbenchOpen(true);
+  };
+
+  const handleSelectWorkspaceProject = (projectId: string) => {
+    const found = workspaceProjects.find((p) => p.id === projectId);
+    if (!found) return;
+    if (found.templateId) {
+      const tpl = TEMPLATES.find((t) => t.id === found.templateId);
+      if (tpl) setActiveTemplateId(tpl.id);
+    }
+    const { project: switched } = createCommit(
+      {
+        ...project,
+        id: found.id,
+        name: found.name,
+        description: found.description,
+        files: JSON.parse(JSON.stringify(found.files)),
+      },
+      `Switched active workspace to ${found.name} (${found.watermark})`,
+      'Mercy (User)'
+    );
+    setProject(switched);
+    setActiveFilePath(switched.files[0]?.path || 'index.html');
+    void syncWorkspaceToOsDb(switched);
+    setAuditLedger((prev) =>
+      recordControlPlaneAudit(prev, 'project_workspace_switched', found.id, 'human:mercy', {
+        watermark: found.watermark,
+        name: found.name,
+      })
+    );
+  };
+
+  const handleCreateWorkspaceProject = (input: {
+    name: string;
+    description: string;
+    stack: string;
+  }) => {
+    const newId = 'proj_' + Date.now().toString(36);
+    const watermark = computeProjectWatermark(newId, input.name);
+    const starterHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${input.name}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-8 font-sans">
+  <div class="max-w-3xl mx-auto rounded-2xl border border-cyan-500/30 bg-slate-900/70 p-6">
+    <div class="text-xs font-mono text-cyan-300 mb-2">WATERMARK ${watermark} · ${input.stack}</div>
+    <h1 class="text-2xl font-bold text-white">${input.name}</h1>
+    <p class="text-slate-300 text-sm mt-2">${input.description}</p>
+  </div>
+</body>
+</html>`;
+    const newFiles: ProjectFile[] = [
+      {
+        name: 'index.html',
+        path: 'index.html',
+        language: 'html',
+        content: starterHtml,
+        lastModified: Date.now(),
+      },
+      {
+        name: 'README.md',
+        path: 'README.md',
+        language: 'markdown',
+        content: `# ${input.name}\n\nWatermark: \`${watermark}\`\nStack: ${input.stack}\n\n${input.description}\n`,
+        lastModified: Date.now(),
+      },
+    ];
+    const now = Date.now();
+    const { project: committed } = createCommit(
+      {
+        ...project,
+        id: newId,
+        name: input.name,
+        description: input.description,
+        files: newFiles,
+        createdAt: now,
+        updatedAt: now,
+      },
+      `Created project ${input.name} (${watermark})`,
+      'Mercy (User)'
+    );
+    const newRecord: WorkspaceProjectRecord = {
+      id: newId,
+      name: input.name,
+      description: input.description,
+      watermark,
+      status: 'Active',
+      files: newFiles,
+      milestones: deriveProjectMilestones(committed),
+      createdAt: now,
+      updatedAt: now,
+    };
+    setCustomProjectRecords((prev) => [
+      newRecord,
+      ...prev.map((r) => ({ ...r, status: 'Staging' as const })),
+    ]);
+    setProject(committed);
+    setActiveFilePath('index.html');
+    void syncWorkspaceToOsDb(committed);
+    setAuditLedger((prev) =>
+      recordControlPlaneAudit(prev, 'project_created', newId, 'human:mercy', {
+        name: input.name,
+        watermark,
+        stack: input.stack,
+      })
+    );
+  };
+
+  const handleSubmitProjectBrief = (
+    projectId: string,
+    briefInput: {
+      title: string;
+      objectives: string;
+      constraints: string;
+      targetStack: string;
+    }
+  ) => {
+    const now = Date.now();
+    setCustomProjectRecords((prev) =>
+      prev.map((rec) =>
+        rec.id !== projectId
+          ? rec
+          : {
+              ...rec,
+              brief: {
+                id: 'brief_' + now.toString(36),
+                projectId,
+                title: briefInput.title,
+                objectives: briefInput.objectives,
+                constraints: briefInput.constraints,
+                targetStack: briefInput.targetStack,
+                status: 'submitted',
+                reviewNotes: 'Awaiting architecture & security review.',
+                submittedAt: now,
+                updatedAt: now,
+              },
+              updatedAt: now,
+            }
+      )
+    );
+    setAuditLedger((prev) =>
+      recordControlPlaneAudit(prev, 'project_brief_submitted', projectId, 'human:mercy', {
+        title: briefInput.title,
+      })
+    );
+  };
+
+  const handleReviewProjectBrief = (
+    projectId: string,
+    status: ProjectBriefStatus,
+    notes: string
+  ) => {
+    const now = Date.now();
+    setCustomProjectRecords((prev) =>
+      prev.map((rec) =>
+        rec.id !== projectId || !rec.brief
+          ? rec
+          : {
+              ...rec,
+              brief: {
+                ...rec.brief,
+                status,
+                reviewNotes: notes,
+                updatedAt: now,
+              },
+              updatedAt: now,
+            }
+      )
+    );
+    setAuditLedger((prev) =>
+      recordControlPlaneAudit(prev, 'project_brief_reviewed', projectId, 'human:mercy', {
+        status,
+        notes,
+      })
+    );
+  };
+
   return (
-    <div className="relative flex flex-col h-full w-full bg-[#060810] text-slate-100 overflow-hidden font-sans">
+    <div className="relative flex flex-col h-full w-full los-obsidian-stage text-slate-100 overflow-hidden font-sans">
       {/* Phase 3: GALATICAL3xGlass Dynamic Ambient Backdrop Lighting Orbs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden z-0" aria-hidden="true">
         <div
@@ -2087,310 +2392,338 @@ Use the workspace tabs (**Preview**, **File Explorer**, **Contract**, **Settings
         />
       </div>
 
-      {/* Top Application Header */}
-      <div className="relative z-20 shrink-0">
-        <Header
-          selectedModel={selectedModel}
-          availableModels={AVAILABLE_MODELS}
-          onSelectModel={setSelectedModel}
-          collaborators={COLLABORATORS}
-          project={project}
-          onOpenVersionControl={() => setIsVersionControlOpen(true)}
-          onOpenSecurity={() => setIsSecurityOpen(true)}
-          onOpenDeploy={() => setIsDeployOpen(true)}
-          onOpenIngressShield={() => setIsIngressShieldOpen(true)}
-          onOpenManifest={() => setIsManifestOpen(true)}
-          onOpenEnterpriseMcp={() => setIsEnterpriseMcpOpen(true)}
-          onOpenKineticMonolith={() => setIsKineticMonolithOpen(true)}
-          onOpenSourceInventory={() => setIsSourceInventoryOpen(true)}
-          onOpenModelAllowlist={() => setIsModelAllowlistOpen(true)}
-          onOpenSettings={() => {
-            setRightPanelTab('settings');
-            setMobileTab('preview');
-          }}
-          onOpenArchitecture={() => {
-            setRightPanelTab('architecture');
-            setMobileTab('preview');
-          }}
-          onOpenPublish={() => {
-            setRightPanelTab('publish');
-            setMobileTab('preview');
-          }}
-          onOpenMetrics={() => {
-            setRightPanelTab('metrics');
-            setMobileTab('preview');
-          }}
-          onOpenTerminal={() => {
-            setRightPanelTab('terminal');
-            setMobileTab('preview');
-          }}
-          onOpenTutorial={() => {
-            setRightPanelTab('tutorial');
-            setMobileTab('preview');
-          }}
-          sandboxPlan={sandboxSpecs.plan}
-          onToggleMobileSidebar={() => setIsMobileSidebarOpen(prev => !prev)}
-        />
-      </div>
+      {/* Top SystemStatus Bar (Brand, Sovereign Plate, Model Selector, Security Status, Tabular Clock) */}
+      <SystemStatus
+        selectedModel={selectedModel}
+        availableModels={AVAILABLE_MODELS}
+        onSelectModel={setSelectedModel}
+        controlPlaneState={controlPlaneState}
+        activeDirection={spatialState.activeDirection}
+        onGoHome={() => {
+          setWorkbenchOpen(false);
+          setSpatialState((prev) => transitionSpatialDirection(prev, 'HOME', Date.now(), 0));
+        }}
+        onOpenSecurity={() => setIsSecurityOpen(true)}
+        onOpenDeploy={() => setIsDeployOpen(true)}
+        onOpenVersionControl={() => setIsVersionControlOpen(true)}
+        onOpenModelAllowlist={() => setIsModelAllowlistOpen(true)}
+      />
 
-      {/* Mobile Tab Switcher (< lg screens) */}
-      <div className="relative z-10 lg:hidden flex items-center justify-center p-2 glass-surface-1 border-x-0 border-t-0 shrink-0">
-        <div className="flex rounded-lg bg-black/30 p-1 border border-white/10">
-          <button
-            onClick={() => setMobileTab('chat')}
-            className={`px-4 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-              mobileTab === 'chat'
-                ? 'bg-gradient-to-r from-cyan-500/80 to-blue-600/80 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Wish Composer
-          </button>
-          <button
-            onClick={() => setMobileTab('preview')}
-            className={`px-4 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-              mobileTab === 'preview'
-                ? 'bg-gradient-to-r from-cyan-500/80 to-blue-600/80 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Live Preview
-          </button>
-        </div>
-      </div>
+      {/* Primary Directional Spatial Command Stage (Central AI Fixed Anchor + 4 Cardinal Panels) */}
+      <SpatialNavigation
+        spatialState={spatialState}
+        setSpatialState={setSpatialState}
+        workbenchOpen={workbenchOpen}
+        onOpenWorkbench={handleOpenWorkbenchTab}
+        selectedModel={selectedModel}
+        selectedPersona={selectedPersona}
+        onSelectPersona={setSelectedPersona}
+        isLoading={isLoading}
+        autonomousMode={autonomousMode}
+        onToggleAutonomousMode={() => setAutonomousMode((prev) => !prev)}
+        autonomousStatus={autonomousStatus}
+        onStopAutonomousLoop={() => {
+          recursiveLoopAbortRef.current?.abort('operator_stopped_loop');
+        }}
+        pendingSyncCount={pendingSyncFiles.length}
+        controlPlaneState={controlPlaneState}
+        specs={sandboxSpecs}
+        bindings={cloudflareBindings}
+        watchTestStatus={watchTestStatus}
+        project={project}
+        workspaceProjects={workspaceProjects}
+        onSelectWorkspaceProject={handleSelectWorkspaceProject}
+        onCreateWorkspaceProject={handleCreateWorkspaceProject}
+        onSubmitProjectBrief={handleSubmitProjectBrief}
+        onReviewProjectBrief={handleReviewProjectBrief}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onApplyAllFiles={handleApplyAllFiles}
+        auditLedger={auditLedger}
+        externalPrompt={externalPrompt}
+        onClearExternalPrompt={() => setExternalPrompt(undefined)}
+        consoleFocusNonce={consoleFocusNonce}
+        onBumpConsoleFocus={() => setConsoleFocusNonce((n) => n + 1)}
+      />
 
-      {/* Main Split-Screen Workspace */}
-      <div className="relative z-10 flex flex-1 overflow-hidden min-w-0">
-        {/* Left Sidebar (Collapsible on mobile) */}
-        <Sidebar
-          onSelectTemplate={(tpl) => {
-            handleSelectTemplate(tpl);
-            setIsMobileSidebarOpen(false);
-          }}
-          activeTemplateId={activeTemplateId}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          chatThreads={chatThreads}
-          activeThreadId={activeThreadId}
-          onSelectThread={(id) => {
-            if (id !== activeThreadId) {
-              void flushSessionTelemetry();
-            }
-            setActiveThreadId(id);
-            setIsMobileSidebarOpen(false);
-          }}
-          onNewThread={() => {
-            void flushSessionTelemetry();
-            setMessages([]);
-            handleSelectTemplate(TEMPLATES[0]);
-            setIsMobileSidebarOpen(false);
-          }}
-          puterSyncing={puterSyncing}
-          onSyncPuter={handleSyncPuter}
-          onOpenIngressShield={() => setIsIngressShieldOpen(true)}
-          onOpenManifest={() => setIsManifestOpen(true)}
-          onOpenEnterpriseMcp={() => setIsEnterpriseMcpOpen(true)}
-          onOpenKineticMonolith={() => setIsKineticMonolithOpen(true)}
-          onOpenSourceInventory={() => setIsSourceInventoryOpen(true)}
-          onOpenModelAllowlist={() => setIsModelAllowlistOpen(true)}
-          onSelectTab={(tab) => {
-            setRightPanelTab(tab);
-            setMobileTab('preview');
-            setIsMobileSidebarOpen(false);
-          }}
-          activeWorkspaceTab={rightPanelTab}
-          isMobileOpen={isMobileSidebarOpen}
-          onCloseMobile={() => setIsMobileSidebarOpen(false)}
-        />
+      {/* Full Tabbed Workbench Overlay Sheet (Preview, Code, On-Device FS, Contract, Testing, Terminal, Settings, Publish, Modals) */}
+      {workbenchOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Liquid OS Workspace Workbench"
+          className="fixed inset-x-0 top-14 bottom-16 z-45 bg-[#04070f]/95 backdrop-blur-2xl border-y border-slate-200/15 flex flex-col overflow-hidden animate-fade-in"
+        >
+          {/* Workbench Return & System Tools Header */}
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 py-2 border-b border-slate-200/15 bg-slate-950/75">
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setWorkbenchOpen(false)}
+                className="mercury-press inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-500/15 border border-cyan-400/40 text-xs font-medium text-cyan-100 hover:bg-cyan-500/25 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Spatial Stage</span>
+              </button>
+              <span className="text-xs font-semibold text-slate-200 truncate max-w-[240px]">
+                {project.name}
+              </span>
+              <span className="hidden md:inline text-[10px] font-mono text-cyan-300 px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30">
+                {computeProjectWatermark(project.id, project.name)}
+              </span>
+            </div>
 
-        {/* Center Chat Stream Panel */}
-        <div className={`flex-1 min-w-0 max-w-xl flex-col border-r border-white/10 bg-transparent overflow-hidden ${
-          mobileTab === 'chat' ? 'flex' : 'hidden lg:flex'
-        }`}>
-          <ChatStream
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            isLoading={isLoading}
-            selectedPersona={selectedPersona}
-            onSelectPersona={setSelectedPersona}
-            onRunInCanvas={(code) => {
-              handleRunInCanvas(code);
-              setMobileTab('preview');
-            }}
-            onApplyToFile={(path, code) => {
-              handleApplyToFile(path, code);
-              setMobileTab('preview');
-            }}
-            onApplyAllFiles={(files) => {
-              handleApplyAllFiles(files);
-              setMobileTab('preview');
-            }}
-            activeModelName={selectedModel.name}
-            files={project.files}
-            externalPrompt={externalPrompt}
-            onClearExternalPrompt={() => setExternalPrompt(undefined)}
-            autonomousMode={autonomousMode}
-            onToggleAutonomousMode={() => setAutonomousMode((prev) => !prev)}
-            autonomousStatus={autonomousStatus}
-            onStopAutonomousLoop={() => {
-              recursiveLoopAbortRef.current?.abort('operator_stopped_loop');
-            }}
-          />
-        </div>
+            {/* Deep Vault & Platform Capabilities Bar */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsIngressShieldOpen(true)}
+                className="px-2 py-1 rounded-md bg-slate-900/80 border border-slate-300/15 hover:border-cyan-400/40 text-[10px] text-slate-300 flex items-center gap-1 cursor-pointer"
+              >
+                <Shield className="w-3 h-3 text-emerald-400" /> Ingress Shield
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsManifestOpen(true)}
+                className="px-2 py-1 rounded-md bg-slate-900/80 border border-slate-300/15 hover:border-cyan-400/40 text-[10px] text-slate-300 flex items-center gap-1 cursor-pointer"
+              >
+                <Layers className="w-3 h-3 text-cyan-300" /> Wayopen Manifest
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEnterpriseMcpOpen(true)}
+                className="px-2 py-1 rounded-md bg-slate-900/80 border border-slate-300/15 hover:border-cyan-400/40 text-[10px] text-slate-300 flex items-center gap-1 cursor-pointer"
+              >
+                <Server className="w-3 h-3 text-sky-300" /> MCP Connectors
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsKineticMonolithOpen(true)}
+                className="px-2 py-1 rounded-md bg-slate-900/80 border border-slate-300/15 hover:border-cyan-400/40 text-[10px] text-slate-300 flex items-center gap-1 cursor-pointer"
+              >
+                <Cpu className="w-3 h-3 text-indigo-300" /> Duality.SI
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSourceInventoryOpen(true)}
+                className="px-2 py-1 rounded-md bg-slate-900/80 border border-slate-300/15 hover:border-cyan-400/40 text-[10px] text-slate-300 flex items-center gap-1 cursor-pointer"
+              >
+                <Database className="w-3 h-3 text-amber-300" /> 17 Sources
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsModelAllowlistOpen(true)}
+                className="px-2 py-1 rounded-md bg-slate-900/80 border border-slate-300/15 hover:border-cyan-400/40 text-[10px] text-slate-300 flex items-center gap-1 cursor-pointer"
+              >
+                <Compass className="w-3 h-3 text-cyan-300" /> LiteRT-LM
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkbenchOpen(false)}
+                aria-label="Close Workbench"
+                className="p-1 rounded-md bg-slate-900/80 border border-slate-300/20 text-slate-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
 
-        {/* Right Tabbed Artifact & Preview Canvas Panel */}
-        <div className={`flex-1 min-w-0 flex-col bg-transparent overflow-hidden ${
-          mobileTab === 'preview' ? 'flex' : 'hidden lg:flex'
-        }`}>
-          <PreviewCanvas
-            files={project.files}
-            activeFilePath={activeFilePath}
-            activeTab={rightPanelTab}
-            onChangeTab={setRightPanelTab}
-            watchMode={watchMode}
-            watchTestStatus={watchTestStatus}
-            onDeviceMode={onDeviceMount.mode}
-            renderFileExplorer={
-              <FileExplorerTab
+          <div className="flex-1 min-h-0 flex overflow-hidden">
+            <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+              <PreviewCanvas
                 files={project.files}
                 activeFilePath={activeFilePath}
-                onSelectFile={setActiveFilePath}
-                onAddFile={handleCreateFile}
-                onUploadFiles={handleUploadWorkspaceFiles}
-                onDeleteFile={handleDeleteFile}
-                onReferenceFileInChat={(path) => {
-                  setExternalPrompt(`@${path}`);
-                }}
-                onOpenInCodeEditor={(path) => {
-                  setActiveFilePath(path);
-                  setRightPanelTab('code');
-                }}
-                onDeviceCapabilities={deviceCapabilities}
-                onDeviceMount={onDeviceMount}
-                onDeviceDiff={onDeviceDiff}
-                onMountNativeFolder={handleMountNativeFolder}
-                onReconnectSavedFolder={handleReconnectSavedFolder}
-                onConnectOpfs={handleConnectOpfsVolume}
-                onImportFolderFiles={handleImportFolderFiles}
-                onPushToDevice={() => handlePushToDevice()}
-                onPullFromDevice={handlePullFromDevice}
-                onRefreshDeviceDiff={() => {
-                  if (deviceDirHandleRef.current) {
-                    refreshDeviceTree(deviceDirHandleRef.current);
-                  }
-                }}
-                onToggleDeviceAutoSync={() =>
-                  setOnDeviceMount((prev) => ({ ...prev, autoSync: !prev.autoSync }))
-                }
-                onDisconnectDevice={handleDisconnectDevice}
-                controlPlaneState={controlPlaneState}
-                onTransitionGlobalMode={handleTransitionGlobalMode}
-                onIssuePermit={handleIssueIngestionPermit}
-                pendingSyncFiles={pendingSyncFiles}
-                onRetryFailedSync={handleRetryFailedDeviceSync}
-                lastSnapshotValidation={lastSnapshotValidation}
-                lastWatchVerification={lastWatchVerification}
-              />
-            }
-            renderContract={
-              <ContractHandoffTab
-                onNavigateTab={(tab) => setRightPanelTab(tab)}
-              />
-            }
-            renderCodeEditor={
-              <CodeEditor
-                files={project.files}
-                activeFilePath={activeFilePath}
-                onSelectFile={setActiveFilePath}
-                onUpdateFile={handleUpdateFile}
-                onCreateFile={handleCreateFile}
-                onDeleteFile={handleDeleteFile}
-                onRunInCanvas={() => handleRunInCanvas()}
-                collaborators={COLLABORATORS}
-              />
-            }
-            renderTesting={
-              <TestingTab
-                projectName={project.name}
-                onAskAiForTest={(prompt) => setExternalPrompt(prompt)}
+                activeTab={rightPanelTab}
+                onChangeTab={setRightPanelTab}
                 watchMode={watchMode}
-                onToggleWatchMode={() => setWatchMode((w) => !w)}
-                lastModifiedFile={lastModifiedFile}
-                onStatusChange={setWatchTestStatus}
+                watchTestStatus={watchTestStatus}
+                onDeviceMode={onDeviceMount.mode}
+                renderFileExplorer={
+                  <FileExplorerTab
+                    files={project.files}
+                    activeFilePath={activeFilePath}
+                    onSelectFile={setActiveFilePath}
+                    onAddFile={handleCreateFile}
+                    onUploadFiles={handleUploadWorkspaceFiles}
+                    onDeleteFile={handleDeleteFile}
+                    onReferenceFileInChat={(path) => {
+                      setExternalPrompt(`@${path}`);
+                      setWorkbenchOpen(false);
+                      setSpatialState((prev) =>
+                        transitionSpatialDirection(prev, 'SOUTH', Date.now(), 0)
+                      );
+                      setConsoleFocusNonce((n) => n + 1);
+                    }}
+                    onOpenInCodeEditor={(path) => {
+                      setActiveFilePath(path);
+                      setRightPanelTab('code');
+                    }}
+                    onDeviceCapabilities={deviceCapabilities}
+                    onDeviceMount={onDeviceMount}
+                    onDeviceDiff={onDeviceDiff}
+                    onMountNativeFolder={handleMountNativeFolder}
+                    onReconnectSavedFolder={handleReconnectSavedFolder}
+                    onConnectOpfs={handleConnectOpfsVolume}
+                    onImportFolderFiles={handleImportFolderFiles}
+                    onPushToDevice={() => handlePushToDevice()}
+                    onPullFromDevice={handlePullFromDevice}
+                    onRefreshDeviceDiff={() => {
+                      if (deviceDirHandleRef.current) {
+                        refreshDeviceTree(deviceDirHandleRef.current);
+                      }
+                    }}
+                    onToggleDeviceAutoSync={() =>
+                      setOnDeviceMount((prev) => ({ ...prev, autoSync: !prev.autoSync }))
+                    }
+                    onDisconnectDevice={handleDisconnectDevice}
+                    controlPlaneState={controlPlaneState}
+                    onTransitionGlobalMode={handleTransitionGlobalMode}
+                    onIssuePermit={handleIssueIngestionPermit}
+                    pendingSyncFiles={pendingSyncFiles}
+                    onRetryFailedSync={handleRetryFailedDeviceSync}
+                    lastSnapshotValidation={lastSnapshotValidation}
+                    lastWatchVerification={lastWatchVerification}
+                  />
+                }
+                renderContract={
+                  <ContractHandoffTab
+                    onNavigateTab={(tab) => setRightPanelTab(tab)}
+                  />
+                }
+                renderCodeEditor={
+                  <CodeEditor
+                    files={project.files}
+                    activeFilePath={activeFilePath}
+                    onSelectFile={setActiveFilePath}
+                    onUpdateFile={handleUpdateFile}
+                    onCreateFile={handleCreateFile}
+                    onDeleteFile={handleDeleteFile}
+                    onRunInCanvas={() => handleRunInCanvas()}
+                    collaborators={COLLABORATORS}
+                  />
+                }
+                renderTesting={
+                  <TestingTab
+                    projectName={project.name}
+                    onAskAiForTest={(prompt) => {
+                      setExternalPrompt(prompt);
+                      setWorkbenchOpen(false);
+                      setSpatialState((prev) =>
+                        transitionSpatialDirection(prev, 'SOUTH', Date.now(), 0)
+                      );
+                      setConsoleFocusNonce((n) => n + 1);
+                    }}
+                    watchMode={watchMode}
+                    onToggleWatchMode={() => setWatchMode((w) => !w)}
+                    lastModifiedFile={lastModifiedFile}
+                    onStatusChange={setWatchTestStatus}
+                  />
+                }
+                renderTerminal={
+                  <InteractiveTerminal
+                    files={project.files}
+                    specs={sandboxSpecs}
+                    bindings={cloudflareBindings}
+                  />
+                }
+                renderMetrics={
+                  <SandboxMetricsView
+                    specs={sandboxSpecs}
+                    onUpdateSpecs={setSandboxSpecs}
+                  />
+                }
+                renderPublish={
+                  <PublishTab
+                    gensparkConfig={gensparkConfig}
+                    cloudflareConfig={cloudflareAccount}
+                    githubConfig={githubRepo}
+                    bindings={cloudflareBindings}
+                    controlPlaneState={controlPlaneState}
+                    publishStatus={publishStatus}
+                    isDeploying={isPublishingDeploy}
+                    onVerifyServiceLink={handleVerifyHonoCloudflareLink}
+                    onDeployGenspark={handleDeployGenspark}
+                    onDeployCloudflare={handleDeployCloudflare}
+                    onPushGithub={handlePushGithub}
+                    onUpdateGensparkConfig={(cfg) => setGensparkConfig((prev) => ({ ...prev, ...cfg }))}
+                    onUpdateCloudflareConfig={(cfg) => setCloudflareAccount((prev) => ({ ...prev, ...cfg }))}
+                    onUpdateGithubConfig={(cfg) => setGithubRepo((prev) => ({ ...prev, ...cfg }))}
+                  />
+                }
+                renderPlayAudit={<PlayStoreAuditView />}
+                renderBackups={
+                  <ScriptsBackupsTab
+                    backups={backups}
+                    files={project.files}
+                    onCreateBackup={handleCreateBackup}
+                    onRestoreBackup={handleRestoreBackup}
+                    onDeleteBackup={handleDeleteBackup}
+                  />
+                }
+                renderArchitecture={
+                  <ArchitectureView
+                    project={project}
+                    controlPlaneState={controlPlaneState}
+                    ensureControlPlaneSession={ensureControlPlaneSession}
+                    buildControlPlaneHeaders={buildControlPlaneHeaders}
+                    onOsAuditEvent={(entry) => setAuditLedger((prev) => [...prev, entry])}
+                    onOpenIngressShield={() => setIsIngressShieldOpen(true)}
+                    onOpenManifest={() => setIsManifestOpen(true)}
+                    onOpenEnterpriseMcp={() => setIsEnterpriseMcpOpen(true)}
+                    onOpenKineticMonolith={() => setIsKineticMonolithOpen(true)}
+                  />
+                }
+                renderSettings={
+                  <SettingsModal
+                    settings={settings}
+                    onUpdateSettings={setSettings}
+                  />
+                }
+                renderTutorial={
+                  <TutorialTab
+                    onNavigateTab={(tab) => setRightPanelTab(tab)}
+                    onRunSamplePrompt={(prompt) => {
+                      setExternalPrompt(prompt);
+                      setWorkbenchOpen(false);
+                      setSpatialState((prev) =>
+                        transitionSpatialDirection(prev, 'SOUTH', Date.now(), 0)
+                      );
+                      setConsoleFocusNonce((n) => n + 1);
+                    }}
+                  />
+                }
+                onSendInspectToChat={(prompt) => {
+                  setExternalPrompt(prompt);
+                  setWorkbenchOpen(false);
+                  setSpatialState((prev) =>
+                    transitionSpatialDirection(prev, 'SOUTH', Date.now(), 0)
+                  );
+                  setConsoleFocusNonce((n) => n + 1);
+                }}
               />
-            }
-            renderTerminal={
-              <InteractiveTerminal
-                files={project.files}
-                specs={sandboxSpecs}
-                bindings={cloudflareBindings}
-              />
-            }
-            renderMetrics={
-              <SandboxMetricsView
-                specs={sandboxSpecs}
-                onUpdateSpecs={setSandboxSpecs}
-              />
-            }
-            renderPublish={
-              <PublishTab
-                gensparkConfig={gensparkConfig}
-                cloudflareConfig={cloudflareAccount}
-                githubConfig={githubRepo}
-                bindings={cloudflareBindings}
-                controlPlaneState={controlPlaneState}
-                publishStatus={publishStatus}
-                isDeploying={isPublishingDeploy}
-                onVerifyServiceLink={handleVerifyHonoCloudflareLink}
-                onDeployGenspark={handleDeployGenspark}
-                onDeployCloudflare={handleDeployCloudflare}
-                onPushGithub={handlePushGithub}
-                onUpdateGensparkConfig={(cfg) => setGensparkConfig(prev => ({ ...prev, ...cfg }))}
-                onUpdateCloudflareConfig={(cfg) => setCloudflareAccount(prev => ({ ...prev, ...cfg }))}
-                onUpdateGithubConfig={(cfg) => setGithubRepo(prev => ({ ...prev, ...cfg }))}
-              />
-            }
-            renderPlayAudit={<PlayStoreAuditView />}
-            renderBackups={
-              <ScriptsBackupsTab
-                backups={backups}
-                files={project.files}
-                onCreateBackup={handleCreateBackup}
-                onRestoreBackup={handleRestoreBackup}
-                onDeleteBackup={handleDeleteBackup}
-              />
-            }
-            renderArchitecture={
-              <ArchitectureView
-                project={project}
-                controlPlaneState={controlPlaneState}
-                ensureControlPlaneSession={ensureControlPlaneSession}
-                buildControlPlaneHeaders={buildControlPlaneHeaders}
-                onOsAuditEvent={(entry) => setAuditLedger((prev) => [...prev, entry])}
-                onOpenIngressShield={() => setIsIngressShieldOpen(true)}
-                onOpenManifest={() => setIsManifestOpen(true)}
-                onOpenEnterpriseMcp={() => setIsEnterpriseMcpOpen(true)}
-                onOpenKineticMonolith={() => setIsKineticMonolithOpen(true)}
-              />
-            }
-            renderSettings={
-              <SettingsModal
-                settings={settings}
-                onUpdateSettings={setSettings}
-              />
-            }
-            renderTutorial={
-              <TutorialTab
-                onNavigateTab={(tab) => setRightPanelTab(tab)}
-                onRunSamplePrompt={(prompt) => setExternalPrompt(prompt)}
-              />
-            }
-            onSendInspectToChat={(prompt) => {
-              setExternalPrompt(prompt);
-            }}
-          />
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Bottom Brushed Metallic Glass Navigation Dock */}
+      <NavigationDock
+        activeDirection={spatialState.activeDirection}
+        workbenchOpen={workbenchOpen}
+        workbenchTab={rightPanelTab}
+        onNavigate={(dir) => {
+          setWorkbenchOpen(false);
+          setSpatialState((prev) => transitionSpatialDirection(prev, dir, Date.now(), 0));
+        }}
+        onOpenVault={() => handleOpenWorkbenchTab('files')}
+        onOpenSettings={() => handleOpenWorkbenchTab('settings')}
+        onOpenMore={() => handleOpenWorkbenchTab('architecture')}
+        onActivateCentralAI={() => {
+          setWorkbenchOpen(false);
+          setSpatialState((prev) => transitionSpatialDirection(prev, 'SOUTH', Date.now(), 0));
+          setConsoleFocusNonce((n) => n + 1);
+        }}
+      />
 
       {/* Version Control Drawer */}
       <VersionControlDrawer
